@@ -229,7 +229,13 @@ def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypa
     async def fail_if_called(_user_message, _history):
         raise AssertionError("agent should not be called for fixed reply shortcut")
 
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
     response = client.post(
         "/api/v1/chat",
@@ -264,13 +270,20 @@ def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypa
             "trigger": "message_endswith_chinese_period",
         },
     }
+    assert sleep_calls == [5]
 
 
 def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
     async def fail_if_called(_user_message, _history):
         raise AssertionError("agent should not be called for fixed reply shortcut")
 
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
     response = client.post(
         "/api/v1/chat",
@@ -294,13 +307,20 @@ def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
         "fixed_reply_shortcut": True,
         "trigger": "message_startswith_wo",
     }
+    assert sleep_calls == [5]
 
 
 def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
     async def fail_if_called(_user_message, _history):
         raise AssertionError("agent should not be called for fixed reply shortcut")
 
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
     response = client.post(
         "/api/v1/chat",
@@ -324,6 +344,7 @@ def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
         "fixed_reply_shortcut": True,
         "trigger": "message_contains_yase",
     }
+    assert sleep_calls == [5]
 
 
 def test_chat_returns_502_when_agent_fails(monkeypatch):
@@ -421,7 +442,13 @@ def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(m
         raise AssertionError("agent stream should not be called for fixed reply shortcut")
         yield
 
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
     monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
 
     response = client.post(
         "/api/v1/chat/stream",
@@ -441,6 +468,7 @@ def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(m
     assert '"session_id":"session-stream-fixed-reply"' in body
     assert '"fixed_reply_shortcut":true' in body
     assert "event: recommendations" not in body
+    assert sleep_calls == [5]
 
 
 def test_account_detail_returns_frontend_detail_payload():

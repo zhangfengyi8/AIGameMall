@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -41,6 +42,7 @@ CONTAINS_YASE_FIXED_REPLY_TEXT = (
 async def chat(request: ChatRequest) -> AgentResultRenderResponse:
     shortcut = _fixed_reply_shortcut(request.message)
     if shortcut:
+        await asyncio.sleep(5)
         return _fixed_reply_response(request, shortcut)
 
     try:
@@ -66,6 +68,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         shortcut = _fixed_reply_shortcut(request.message)
         if shortcut:
             _trigger, reply = shortcut
+            await asyncio.sleep(5)
             data = _fixed_reply_response(request, shortcut).model_dump()
             yield _sse("message_delta", {"text": reply})
             yield _sse("done", data)
