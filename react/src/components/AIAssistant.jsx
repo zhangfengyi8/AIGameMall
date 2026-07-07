@@ -110,7 +110,7 @@ export default function AIAssistant({ accounts, onCardClick }) {
                 <div className="ai-msg-avatar">🤖</div>
                 <div>
                   <div className="msg-bubble">
-                    你好！我是AI导购<strong>小购</strong>👋<br />
+                    你好！我是AI导购<strong>小虎</strong>👋<br />
                     告诉我你的需求，我帮你精准匹配账号——<br />
                     📌 想要哪个英雄的皮肤？<br />
                     📌 预算多少？<br />
