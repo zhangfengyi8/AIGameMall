@@ -434,6 +434,10 @@
         replyEl.textContent += data.text || ''
       } else if (eventName === 'strategy') {
         appendJson('strategy', data)
+      } else if (eventName === 'done') {
+        replyEl.textContent = data.reply || replyEl.textContent
+        renderCards(Array.isArray(data.recommendations) ? data.recommendations : [])
+        appendJson('done', data)
       } else if (eventName === 'recommendations') {
         renderCards(Array.isArray(data) ? data : [])
         appendJson('recommendations', data)

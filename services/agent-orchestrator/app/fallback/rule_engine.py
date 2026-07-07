@@ -3,15 +3,22 @@
 """
 import re
 
+from app.skills.conversation_intent import classify_conversation_intent
 from app.skills.requirement_intake import intake as rule_intake, search_params_from_intake
 from app.skills.recommendation_brief import build_query
 from app.tools.search import _do_search
 
 
-def run_fallback(user_message: str) -> dict:
+def run_fallback(user_message: str, history: list[dict] | None = None) -> dict:
     """规则降级入口：使用 buyer-requirement-intake + account-recommendation-brief 技能。"""
+    intent_result = classify_conversation_intent(user_message, history)
+    if not intent_result["should_search"]:
+        return _controlled_chat_result(user_message, history, intent_result)
+
     # Step 1: 需求理解
-    intake_result = rule_intake(user_message)
+    merged_message = _merged_user_message(user_message, history)
+    next_history = [*(history or []), {"role": "user", "content": user_message}]
+    intake_result = rule_intake(merged_message)
 
     if not intake_result["ready_for_recommendation"]:
         # 需求不明确，直接追问
@@ -21,10 +28,7 @@ def run_fallback(user_message: str) -> dict:
         reply = f"好的，我先了解下你的需求。{clarifying}"
         return {
             "reply": reply,
-            "history": [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": reply},
-            ],
+            "history": [*next_history, {"role": "assistant", "content": reply}],
         }
 
     # Step 2: 构建推荐策略
@@ -39,10 +43,7 @@ def run_fallback(user_message: str) -> dict:
 
     # Step 4: 如果结果太少，尝试降级
     if len(accounts) < 3 and fallbacks:
-        # 先去掉软偏好，放宽搜索
         relaxed_params = dict(search_params)
-        relaxed_params.pop("heroes", None)
-        relaxed_params.pop("skins", None)
         relaxed_params.pop("rank_name", None)
         if "expand_budget_20pct" in fallbacks:
             b_max = relaxed_params.get("budget_max")
@@ -56,35 +57,170 @@ def run_fallback(user_message: str) -> dict:
     reply = generate_fallback_reply(accounts, user_message)
     return {
         "reply": reply,
+        "recommendations": _format_fallback_recommendations(accounts[:3]),
+        "intake": intake_result,
         "history": [
+            *next_history,
+            {"role": "assistant", "content": reply},
+        ],
+    }
+
+
+def _controlled_chat_result(user_message: str, history: list[dict] | None, intent_result: dict) -> dict:
+    reply = intent_result.get("reply", "")
+    return {
+        "reply": reply,
+        "recommendations": [],
+        "intake": {
+            "intent": intent_result.get("intent", "unknown"),
+            "ready_for_recommendation": False,
+            "controlled_chat": True,
+        },
+        "history": [
+            *(history or []),
             {"role": "user", "content": user_message},
             {"role": "assistant", "content": reply},
         ],
     }
 
 
-def generate_fallback_reply(accounts: list[dict], user_text: str) -> str:
-    """根据搜索结果生成模板推荐回复。"""
-    if not accounts:
-        return "抱歉，暂时没有找到完全符合你要求的账号。你可以试试放宽预算或者调整一下条件。"
+def _merged_user_message(user_message: str, history: list[dict] | None = None) -> str:
+    user_parts: list[str] = [user_message.strip()]
+    for item in history or []:
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = item.get("content", "")
+        if isinstance(content, str) and content.strip():
+            user_parts.append(content.strip())
+    return "\n".join(user_parts)
 
-    lines = [f"为你推荐以下 {len(accounts[:3])} 个账号：\n"]
-    for i, lst in enumerate(accounts[:3], 1):
-        lid = lst.get("listingId", "?")
-        sc = lst.get("serverCode", "?")
-        sp = lst.get("salePrice", 0)
-        rn = lst.get("rankName", "?")
-        rs = lst.get("rankStars", 0)
-        vip = lst.get("vipLevel", "?")
-        anti = "有防沉迷" if lst.get("antiAddictionStatus") == "RESTRICTED" else "无防沉迷"
-        real = "支持二次实名" if lst.get("secondaryRealNameStatus") == "SUPPORTED" else "不支持二次实名"
-        bind = "可换绑" if lst.get("changeBindStatus") == "FULL_SUPPORTED" else "不可换绑"
 
-        lines.append(
-            f"{i}. {lid} [{sc}]"
-            f"\n   价格：{sp}元  段位：{rn} {rs}星"
-            f"\n   VIP{vip}  {anti}  {real}  {bind}"
+def _format_fallback_recommendations(accounts: list[dict]) -> list[dict]:
+    metrics_by_lid = {m["listingId"]: m for m in _do_load("accountMetrics.json")}
+    skin_master = {s["skinId"]: s for s in _do_load("skinMaster.json")}
+    skin_ids_by_lid: dict[str, list[str]] = {}
+    for row in _do_load("accountSkin.json"):
+        skin_ids_by_lid.setdefault(row["listingId"], []).append(row["skinId"])
+
+    recommendations = []
+    for account in accounts:
+        listing_id = account.get("listingId", "")
+        metrics = metrics_by_lid.get(listing_id, {})
+        skin_names = [
+            skin_master.get(skin_id, {}).get("skinName", "")
+            for skin_id in skin_ids_by_lid.get(listing_id, [])
+        ]
+        recommendations.append(
+            {
+                "account_id": listing_id,
+                "server_code": account.get("serverCode"),
+                "price": account.get("salePrice", 0),
+                "vip_level": account.get("vipLevel"),
+                "rank_name": account.get("rankName"),
+                "rank_stars": account.get("rankStars"),
+                "anti_addiction": account.get("antiAddictionStatus"),
+                "secondary_real_name": account.get("secondaryRealNameStatus"),
+                "change_bind": account.get("changeBindStatus"),
+                "skin_count": metrics.get("skinCount", 0),
+                "hero_count": metrics.get("heroCount", 0),
+                "value_score": metrics.get("valueScore", 0),
+                "skins": [name for name in skin_names if name][:3],
+            }
         )
-        lines.append("")
+    return recommendations
 
+
+def _do_load(filename: str) -> list[dict]:
+    from app.tools.search import _lj
+
+    return _lj(filename)
+
+
+def generate_fallback_reply(accounts: list[dict], user_text: str) -> str:
+    """根据搜索结果生成面向买家的自然推荐文案，不暴露内部 ID 或策略说明。"""
+    selected_recommendations = _format_fallback_recommendations(accounts[:3])
+    if not selected_recommendations:
+        return "暂时找不到相关账号，换个条件试试吧。比如放宽预算、平台或皮肤要求，我可以继续帮你筛。"
+
+    if len(selected_recommendations) == 1:
+        lines = ["找到一个比较匹配的账号，可以优先看看。"]
+    else:
+        lines = ["我筛到几款比较接近你需求的账号，可以按优先级看看："]
+
+    labels = ["推荐一", "推荐二", "推荐三"]
+    for index, recommendation in enumerate(selected_recommendations):
+        lines.append(_format_recommendation_paragraph(labels[index], recommendation))
+    lines.append(_shared_risk_note(selected_recommendations))
     return "\n".join(lines)
+
+
+def _format_recommendation_paragraph(label: str, recommendation: dict) -> str:
+    price = recommendation.get("price", 0)
+    rank_name = recommendation.get("rank_name") or "未知段位"
+    vip_level = recommendation.get("vip_level") or 0
+    server_name = _server_label(recommendation.get("server_code"))
+    skins = recommendation.get("skins") or []
+    core_asset = _core_asset_text(skins)
+    value_text = _value_text(recommendation)
+    return (
+        f"{label}：这款是{server_name}，价格{price}元，{rank_name}段位，V{vip_level}。"
+        f"核心亮点是{core_asset}，{value_text}。"
+    )
+
+
+def _core_asset_text(skins: list[str]) -> str:
+    if not skins:
+        return "账号基础资产比较均衡"
+    if "杀手不太冷" in skins:
+        other_skins = [skin for skin in skins if skin != "杀手不太冷"]
+        if other_skins:
+            return f"带孙尚香荣耀典藏「杀手不太冷」，同时还有{'、'.join(other_skins)}等高价值皮肤"
+        return "带孙尚香荣耀典藏「杀手不太冷」"
+    return f"拥有{'、'.join(skins)}等核心皮肤"
+
+
+def _risk_summary(recommendation: dict) -> str:
+    real = "支持二次实名" if recommendation.get("secondary_real_name") == "SUPPORTED" else "不支持二次实名"
+    bind = "可换绑" if recommendation.get("change_bind") == "FULL_SUPPORTED" else "不可换绑"
+    anti = "无防沉迷" if recommendation.get("anti_addiction") == "NONE" else "有防沉迷限制"
+    return f"{real}、{bind}，{anti}"
+
+
+def _value_text(recommendation: dict) -> str:
+    score = recommendation.get("value_score", 0) or 0
+    price = recommendation.get("price", 0) or 0
+    if score >= 85:
+        return "预算内性价比更突出"
+    if price >= 4000:
+        return "配置更偏收藏型，但价格明显更高"
+    return "整体配置比较均衡"
+
+
+def _shared_risk_note(recommendations: list[dict]) -> str:
+    if not recommendations:
+        return ""
+    if all(item.get("secondary_real_name") == "SUPPORTED" for item in recommendations):
+        real = "支持二次实名"
+    else:
+        real = "部分账号实名条件需要重点确认"
+    if all(item.get("change_bind") == "FULL_SUPPORTED" for item in recommendations):
+        bind = "支持换绑"
+    else:
+        bind = "部分账号换绑条件需要重点确认"
+    if all(item.get("anti_addiction") == "NONE" for item in recommendations):
+        anti = "无防沉迷"
+    else:
+        anti = "部分账号可能存在防沉迷限制"
+    if len(recommendations) == 1:
+        return f"下单前注意事项：这款账号显示{real}、{bind}，且{anti}；建议再确认实名可改和换绑流程。"
+    return f"交易安全上，这几款都显示{real}、{bind}，且{anti}；下单前建议再确认实名可改和换绑流程。"
+
+
+def _server_label(server_code: str | None) -> str:
+    labels = {
+        "ANDROID_QQ": "安卓QQ区",
+        "ANDROID_WECHAT": "安卓微信区",
+        "IOS_QQ": "苹果QQ区",
+        "IOS_WECHAT": "苹果微信区",
+    }
+    return labels.get(server_code or "", "未知区服")

@@ -31,6 +31,15 @@ def _first_int(patterns: list[str], text: str) -> int | None:
 
 
 def _find_platform(text: str) -> dict:
+    if "\n" in text:
+        for line in (part.strip() for part in text.splitlines()):
+            if not line:
+                continue
+            line_result = _find_platform(line)
+            if line_result.get("login_channel") or line_result.get("os"):
+                return line_result
+        return {"login_channel": None, "os": None, "server_code": None}
+
     text_lower = text.lower().replace(" ", "")
     if "qq" in text_lower or "q区" in text:
         login_channel = "QQ"
@@ -61,6 +70,15 @@ def _find_platform(text: str) -> dict:
 
 def _find_budget(text: str) -> dict:
     result = {"min": None, "max": None, "currency": "CNY", "flexible": False, "unlimited": False, "raw_text": None}
+    if "\n" in text:
+        for line in (part.strip() for part in text.splitlines()):
+            if not line:
+                continue
+            line_result = _find_budget(line)
+            if line_result.get("max") is not None or line_result.get("min") is not None or line_result.get("unlimited"):
+                return line_result
+        return result
+
     if re.search(r"预算不限|不限预算|价格不限|不限价|不设预算|预算无上限|无预算上限", text):
         result["unlimited"] = True
         result["raw_text"] = text

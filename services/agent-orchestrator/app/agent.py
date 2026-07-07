@@ -21,6 +21,7 @@ from .instructions import INSTRUCTIONS, RECOMMENDATION_INSTRUCTIONS
 
 from .tools.search import search_accounts, _do_search
 from .schemas.detail import format_card
+from .skills.conversation_intent import classify_conversation_intent
 from .skills.requirement_intake import intake as rule_intake, search_params_from_intake
 from .skills.recommendation_brief import build_query
 
@@ -143,15 +144,19 @@ def _build_strategy_note(intake_result: dict, brief: dict, accounts: list[dict])
         f"软偏好: {'; '.join(intake_result['soft_preferences']) if intake_result['soft_preferences'] else '无'}\n"
         f"排序权重: {brief['ranking']['weights']}\n\n"
         f"【推荐账号列表】\n" + "\n".join(account_summaries) + "\n\n"
-        f"以下 3 个账号已由系统按价值评分精选推荐，请用自然的推荐语气向用户介绍。\n"
+        f"以下账号已由系统按价值评分精选推荐，请用自然的买家导购语气介绍给用户。\n"
         f"回复总字数控制在 300 字以内。\n"
         f"每个账号用 1-2 句自然介绍即可，说明价格、段位、核心亮点和主要风险。\n"
         f"皮肤/英雄数据来自系统数据库，准确可靠。如果账号包含用户想要的皮肤，直接说出来，不需要让用户核实。\n"
-        f"不要编号，不要写1. 2. 3. 列表，不要用列表符号。用自然的段落描述。\n"
+        f"如果只有一个账号，开头写“找到一个比较匹配的账号，可以优先看看。”，然后写“推荐一：...”。\n"
+        f"如果有多个账号，开头写“我筛到几款比较接近你需求的账号，可以按优先级看看：”，然后用“推荐一：...”“推荐二：...”“推荐三：...”分段。\n"
+        f"每条推荐只讲差异化卖点，例如价格、段位/VIP、核心皮肤/资产；不要每条重复同一句性价比和风险套话。\n"
+        f"交易风险和购买提醒只在所有推荐之后统一说一次。只有 1 个账号时，用“下单前注意事项：这款账号...”，不要说“这几款”；多个账号时，才可以说“这几款”。\n"
+        f"不许向用户解释推荐数量规则，不许出现“整体描述”“数量不足”“不硬凑”“命中多少”“最多 3 个”“按规则筛选”等内部策略话术。\n"
         f"必须输出纯文本，不要使用 Markdown 标题、加粗、表格、代码块、引用块或分隔线。\n"
         f"不要写搜索过程，不要写长篇分析。\n"
         f"严禁暴露内部 ID 或字段名。绝对不能出现英文格式的内部编号和区服代号。\n"
-        f"对用户只能使用推荐一、推荐二、高段位款、性价比款、低风险款等展示名称。\n"
+        f"对用户只能使用推荐一、推荐二、推荐三、高段位款、性价比款、低风险款等展示名称。\n"
         f"如果没有推荐账号（列表为空），只用 1-2 句话说明没有匹配结果，并给 1 个放宽建议。"
     )
 
@@ -228,16 +233,32 @@ def _format_recommendation_cards(accounts: list[dict]) -> list[dict]:
 
 def _merged_user_message(user_message: str, history: list | None = None) -> str:
     """合并历史用户消息和当前消息，供规则解析补全多轮信息。"""
-    user_parts: list[str] = []
+    user_parts: list[str] = [user_message.strip()]
     for item in history or []:
         if not isinstance(item, dict) or item.get("role") != "user":
             continue
         content = item.get("content", "")
         if isinstance(content, str) and content.strip():
             user_parts.append(content.strip())
-    user_parts.append(user_message.strip())
     return "\n".join(user_parts)
 
+
+
+def _controlled_chat_result(user_message: str, intent_result: dict) -> dict:
+    reply = _sanitize_public_reply(intent_result.get("reply", ""))
+    return {
+        "reply": reply,
+        "recommendations": [],
+        "history": [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": reply},
+        ],
+        "intake": {
+            "intent": intent_result.get("intent", "unknown"),
+            "ready_for_recommendation": False,
+            "controlled_chat": True,
+        },
+    }
 async def run_agent(
     user_message: str,
     history: list | None = None,
@@ -250,6 +271,10 @@ async def run_agent(
     3. 如果需求模糊 → 让 LLM 自行追问
     4. 独立搜索拿到完整卡片数据返回前端
     """
+    intent_result = classify_conversation_intent(user_message, history)
+    if not intent_result["should_search"]:
+        return _controlled_chat_result(user_message, intent_result)
+
     intake_result = rule_intake(_merged_user_message(user_message, history))
     ready = intake_result["ready_for_recommendation"]
 
@@ -316,6 +341,14 @@ async def run_agent_stream(
     - {"event": "recommendations", "data": [/* cards */]}
     - {"event": "done", "data": {"reply", "history", "intake"}}
     """
+    intent_result = classify_conversation_intent(user_message, history)
+    if not intent_result["should_search"]:
+        result = _controlled_chat_result(user_message, intent_result)
+        yield {"event": "message_delta", "data": {"text": result["reply"]}}
+        yield {"event": "recommendations", "data": []}
+        yield {"event": "done", "data": result}
+        return
+
     intake_result = rule_intake(_merged_user_message(user_message, history))
     ready = intake_result["ready_for_recommendation"]
 

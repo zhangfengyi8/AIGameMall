@@ -113,7 +113,7 @@ _AGENT_BRIDGE_SCRIPT = textwrap.dedent(
         sys.modules.setdefault("agents", agents_module)
 
         from app.fallback.rule_engine import run_fallback
-        result = run_fallback(message)
+        result = run_fallback(message, history)
         result.setdefault("recommendations", [])
         result.setdefault("intake", {})
         return result
@@ -159,7 +159,7 @@ _AGENT_STREAM_BRIDGE_SCRIPT = textwrap.dedent(
         sys.modules.setdefault("agents", agents_module)
 
         from app.fallback.rule_engine import run_fallback
-        result = run_fallback(message)
+        result = run_fallback(message, history)
         reply = result.get("reply", "")
         for char in reply:
             emit("message_delta", {"text": char})
