@@ -257,9 +257,61 @@ def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypa
     )
     assert body == {
         "session_id": "session-chat-fixed-reply",
-        "type": "clarification",
+        "type": "recommendations",
         "message": fixed_reply,
-        "cards": [],
+        "cards": [
+            {
+                "id": "listing_10005",
+                "title": "荣耀王者56星 · V9 · 389皮肤",
+                "price": 4980,
+                "match": 98,
+                "heroes": 120,
+                "skins": 389,
+                "rank": "荣耀王者56星",
+                "vip": 9,
+                "region": "安卓微信",
+                "estValue": 4980,
+                "estLabel": "高性价比",
+                "risk": "低",
+                "riskItems": ["防沉迷：NONE", "实名：SUPPORTED", "换绑：FULL_SUPPORTED"],
+                "highlightSkins": ["全息碎影", "凤求凰", "至尊宝"],
+                "detail_api": "/api/v1/accounts/listing_10005",
+            },
+            {
+                "id": "listing_10015",
+                "title": "无双王者42星 · V8 · 372皮肤",
+                "price": 4680,
+                "match": 95,
+                "heroes": 118,
+                "skins": 372,
+                "rank": "无双王者42星",
+                "vip": 8,
+                "region": "安卓微信",
+                "estValue": 4680,
+                "estLabel": "高性价比",
+                "risk": "低",
+                "riskItems": ["防沉迷：NONE", "实名：SUPPORTED", "换绑：FULL_SUPPORTED"],
+                "highlightSkins": ["倪克斯神谕", "天鹅之梦", "白龙吟"],
+                "detail_api": "/api/v1/accounts/listing_10015",
+            },
+            {
+                "id": "listing_10003",
+                "title": "王者30星 · V8 · 358皮肤",
+                "price": 4380,
+                "match": 92,
+                "heroes": 116,
+                "skins": 358,
+                "rank": "王者30星",
+                "vip": 8,
+                "region": "安卓微信",
+                "estValue": 4380,
+                "estLabel": "高性价比",
+                "risk": "低",
+                "riskItems": ["防沉迷：NONE", "实名：SUPPORTED", "换绑：FULL_SUPPORTED"],
+                "highlightSkins": ["地狱火", "末日机甲", "遇见神鹿"],
+                "detail_api": "/api/v1/accounts/listing_10003",
+            },
+        ],
         "history": [
             {"role": "assistant", "content": "上一轮"},
             {"role": "user", "content": "需要全皮肤的账号，微信区，安卓平台。"},
@@ -298,7 +350,12 @@ def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
     body = response.json()
     assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
     assert "适合根据你的预算、平台和偏好继续筛选" in body["message"]
-    assert body["cards"] == []
+    assert body["type"] == "recommendations"
+    assert [card["id"] for card in body["cards"]] == [
+        "listing_10019",
+        "listing_10014",
+        "listing_10013",
+    ]
     assert body["history"][-2:] == [
         {"role": "user", "content": "我想买一个适合收藏的账号"},
         {"role": "assistant", "content": body["message"]},
@@ -335,7 +392,12 @@ def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
     body = response.json()
     assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
     assert "亚瑟" in body["message"]
-    assert body["cards"] == []
+    assert body["type"] == "recommendations"
+    assert [card["id"] for card in body["cards"]] == [
+        "listing_10005",
+        "listing_10012",
+        "listing_10019",
+    ]
     assert body["history"][-2:] == [
         {"role": "user", "content": "帮我找一个有亚瑟的账号"},
         {"role": "assistant", "content": body["message"]},
@@ -345,6 +407,34 @@ def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
         "trigger": "message_contains_yase",
     }
     assert sleep_calls == [5]
+
+
+def test_fixed_reply_card_detail_apis_use_existing_accounts(monkeypatch):
+    async def fake_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    for message in [
+        "需要全皮肤的账号，微信区，安卓平台。",
+        "我想买一个适合收藏的账号",
+        "帮我找一个有亚瑟的账号",
+    ]:
+        response = client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": f"session-detail-check-{message[:1]}",
+                "message": message,
+                "history": [],
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["cards"]) == 3
+        for card in body["cards"]:
+            detail_response = client.get(card["detail_api"])
+            assert detail_response.status_code == 200
+            assert detail_response.json()["id"] == card["id"]
 
 
 def test_chat_returns_502_when_agent_fails(monkeypatch):
@@ -464,10 +554,11 @@ def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(m
     body = response.text
     assert "event: message_delta" in body
     assert "可以，我帮你筛到三个符合方向的账号" in body
+    assert "event: recommendations" in body
+    assert '"id":"listing_10005"' in body
     assert "event: done" in body
     assert '"session_id":"session-stream-fixed-reply"' in body
     assert '"fixed_reply_shortcut":true' in body
-    assert "event: recommendations" not in body
     assert sleep_calls == [5]
 
 

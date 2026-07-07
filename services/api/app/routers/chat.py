@@ -36,6 +36,149 @@ CONTAINS_YASE_FIXED_REPLY_TEXT = (
     "风险较低。综合来看，如果你主要想找包含亚瑟、适合稳定上手的账号，这三个号可以"
     "作为优先选择。"
 )
+FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER = {
+    CHINESE_PERIOD_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10005",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4980,
+            "vip_level": 9,
+            "rank_name": "荣耀王者",
+            "rank_stars": 56,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 389,
+            "hero_count": 120,
+            "value_score": 98,
+            "skins": ["全息碎影", "凤求凰", "至尊宝"],
+        },
+        {
+            "account_id": "listing_10015",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4680,
+            "vip_level": 8,
+            "rank_name": "无双王者",
+            "rank_stars": 42,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 372,
+            "hero_count": 118,
+            "value_score": 95,
+            "skins": ["倪克斯神谕", "天鹅之梦", "白龙吟"],
+        },
+        {
+            "account_id": "listing_10003",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4380,
+            "vip_level": 8,
+            "rank_name": "王者",
+            "rank_stars": 30,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 358,
+            "hero_count": 116,
+            "value_score": 92,
+            "skins": ["地狱火", "末日机甲", "遇见神鹿"],
+        },
+    ],
+    STARTS_WITH_WO_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10019",
+            "server_code": "ANDROID_QQ",
+            "price": 2980,
+            "vip_level": 7,
+            "rank_name": "王者",
+            "rank_stars": 25,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 188,
+            "hero_count": 112,
+            "value_score": 94,
+            "skins": ["白龙吟", "地狱火", "街头霸王"],
+        },
+        {
+            "account_id": "listing_10014",
+            "server_code": "ANDROID_WECHAT",
+            "price": 2580,
+            "vip_level": 6,
+            "rank_name": "无双王者",
+            "rank_stars": 32,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 162,
+            "hero_count": 108,
+            "value_score": 91,
+            "skins": ["末日机甲", "仲夏夜之梦", "遇见神鹿"],
+        },
+        {
+            "account_id": "listing_10013",
+            "server_code": "IOS_QQ",
+            "price": 1980,
+            "vip_level": 5,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 128,
+            "hero_count": 96,
+            "value_score": 88,
+            "skins": ["至尊宝", "女仆咖啡", "狮心王"],
+        },
+    ],
+    CONTAINS_YASE_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10005",
+            "server_code": "ANDROID_QQ",
+            "price": 1680,
+            "vip_level": 6,
+            "rank_name": "王者",
+            "rank_stars": 18,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 136,
+            "hero_count": 104,
+            "value_score": 93,
+            "skins": ["狮心王", "心灵战警", "地狱火"],
+        },
+        {
+            "account_id": "listing_10012",
+            "server_code": "ANDROID_WECHAT",
+            "price": 1380,
+            "vip_level": 5,
+            "rank_name": "王者",
+            "rank_stars": 12,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 118,
+            "hero_count": 100,
+            "value_score": 90,
+            "skins": ["狮心王", "电玩小子", "白龙吟"],
+        },
+        {
+            "account_id": "listing_10019",
+            "server_code": "IOS_WECHAT",
+            "price": 980,
+            "vip_level": 4,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 96,
+            "hero_count": 92,
+            "value_score": 86,
+            "skins": ["狮心王", "精灵王", "女仆咖啡"],
+        },
+    ],
+}
 
 
 @router.post("", response_model=AgentResultRenderResponse)
@@ -71,6 +214,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             await asyncio.sleep(5)
             data = _fixed_reply_response(request, shortcut).model_dump()
             yield _sse("message_delta", {"text": reply})
+            yield _sse("recommendations", data["cards"])
             yield _sse("done", data)
             return
 
@@ -105,11 +249,12 @@ def _fixed_reply_response(
     shortcut: tuple[str, str],
 ) -> AgentResultRenderResponse:
     trigger, reply = shortcut
+    recommendations = FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER[trigger]
     return render_agent_result(
         AgentResultRenderRequest(
             session_id=request.session_id,
             reply=reply,
-            recommendations=[],
+            recommendations=recommendations,
             history=[
                 *request.history,
                 {"role": "user", "content": request.message},
