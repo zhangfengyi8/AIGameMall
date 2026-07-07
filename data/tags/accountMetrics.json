@@ -1,0 +1,270 @@
+[
+  {
+    "listingId": "listing_10001",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 33760,
+    "heroSkinCounts": {
+      "hero_孙尚香": 2,
+      "hero_貂蝉": 1,
+      "hero_李白": 1,
+      "hero_孙悟空": 1
+    },
+    "valueScore": 8.04
+  },
+  {
+    "listingId": "listing_10002",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 0,
+    "heroSkinCounts": {
+      "hero_武则天": 1,
+      "hero_小乔": 1,
+      "hero_孙尚香": 1,
+      "hero_芈月": 1,
+      "hero_孙悟空": 1
+    },
+    "valueScore": 0.0
+  },
+  {
+    "listingId": "listing_10003",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 42640,
+    "heroSkinCounts": {
+      "hero_貂蝉": 1,
+      "hero_大乔": 1,
+      "hero_杨玉环": 1,
+      "hero_刘备": 1,
+      "hero_王昭君": 1
+    },
+    "valueScore": 16.4
+  },
+  {
+    "listingId": "listing_10004",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 45640,
+    "heroSkinCounts": {
+      "hero_李白": 1,
+      "hero_韩信": 1,
+      "hero_孙悟空": 1,
+      "hero_李信": 1,
+      "hero_宫本武藏": 1
+    },
+    "valueScore": 13.04
+  },
+  {
+    "listingId": "listing_10005",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 34640,
+    "heroSkinCounts": {
+      "hero_孙悟空": 2,
+      "hero_莱西奥": 1,
+      "hero_花木兰": 1,
+      "hero_韩信": 1
+    },
+    "valueScore": 76.98
+  },
+  {
+    "listingId": "listing_10006",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 37760,
+    "heroSkinCounts": {
+      "hero_鲁班七号": 2,
+      "hero_亚瑟": 1,
+      "hero_孙悟空": 1,
+      "hero_百里守约": 1
+    },
+    "valueScore": 10.79
+  },
+  {
+    "listingId": "listing_10007",
+    "skinCount": 4,
+    "heroCount": 5,
+    "skinTotalValueFen": 34520,
+    "heroSkinCounts": {
+      "hero_马超": 1,
+      "hero_关羽": 1,
+      "hero_苏烈": 1,
+      "hero_韩信": 1
+    },
+    "valueScore": 19.18
+  },
+  {
+    "listingId": "listing_10008",
+    "skinCount": 3,
+    "heroCount": 5,
+    "skinTotalValueFen": 16880,
+    "heroSkinCounts": {
+      "hero_孙尚香": 2,
+      "hero_关羽": 1
+    },
+    "valueScore": 17.22
+  },
+  {
+    "listingId": "listing_10009",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 0,
+    "heroSkinCounts": {
+      "hero_武则天": 1,
+      "hero_小乔": 1,
+      "hero_孙尚香": 1,
+      "hero_芈月": 1,
+      "hero_孙悟空": 1
+    },
+    "valueScore": 0.0
+  },
+  {
+    "listingId": "listing_10010",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 37640,
+    "heroSkinCounts": {
+      "hero_李白": 1,
+      "hero_韩信": 2,
+      "hero_孙悟空": 2
+    },
+    "valueScore": 13.44
+  },
+  {
+    "listingId": "listing_10011",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 16880,
+    "heroSkinCounts": {
+      "hero_貂蝉": 1,
+      "hero_李白": 1,
+      "hero_孙悟空": 1,
+      "hero_小乔": 1,
+      "hero_芈月": 1
+    },
+    "valueScore": 2.34
+  },
+  {
+    "listingId": "listing_10012",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 20400,
+    "heroSkinCounts": {
+      "hero_后羿": 1,
+      "hero_孙悟空": 1,
+      "hero_大乔": 1,
+      "hero_鲁班七号": 1,
+      "hero_廉颇": 1
+    },
+    "valueScore": 170.0
+  },
+  {
+    "listingId": "listing_10013",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 54520,
+    "heroSkinCounts": {
+      "hero_韩信": 2,
+      "hero_孙悟空": 1,
+      "hero_孙尚香": 1,
+      "hero_王昭君": 1
+    },
+    "valueScore": 34.51
+  },
+  {
+    "listingId": "listing_10014",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 52520,
+    "heroSkinCounts": {
+      "hero_韩信": 2,
+      "hero_后羿": 1,
+      "hero_鲁班七号": 1,
+      "hero_狄仁杰": 1
+    },
+    "valueScore": 77.24
+  },
+  {
+    "listingId": "listing_10015",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 43520,
+    "heroSkinCounts": {
+      "hero_瑶": 1,
+      "hero_大乔": 1,
+      "hero_貂蝉": 1,
+      "hero_小乔": 1,
+      "hero_王昭君": 1
+    },
+    "valueScore": 25.9
+  },
+  {
+    "listingId": "listing_10016",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 52520,
+    "heroSkinCounts": {
+      "hero_马超": 1,
+      "hero_镜": 1,
+      "hero_公孙离": 1,
+      "hero_不知火舞": 1,
+      "hero_牛魔": 1
+    },
+    "valueScore": 22.07
+  },
+  {
+    "listingId": "listing_10017",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 34640,
+    "heroSkinCounts": {
+      "hero_孙悟空": 2,
+      "hero_赵云": 1,
+      "hero_韩信": 1,
+      "hero_李白": 1
+    },
+    "valueScore": 27.06
+  },
+  {
+    "listingId": "listing_10018",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 60520,
+    "heroSkinCounts": {
+      "hero_公孙离": 1,
+      "hero_貂蝉": 1,
+      "hero_大乔": 1,
+      "hero_孙尚香": 1,
+      "hero_李白": 1
+    },
+    "valueScore": 11.64
+  },
+  {
+    "listingId": "listing_10019",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 40520,
+    "heroSkinCounts": {
+      "hero_孙悟空": 1,
+      "hero_韩信": 1,
+      "hero_后羿": 1,
+      "hero_妲己": 1,
+      "hero_亚瑟": 1
+    },
+    "valueScore": 101.55
+  },
+  {
+    "listingId": "listing_10020",
+    "skinCount": 5,
+    "heroCount": 5,
+    "skinTotalValueFen": 59520,
+    "heroSkinCounts": {
+      "hero_镜": 1,
+      "hero_李白": 1,
+      "hero_孙尚香": 1,
+      "hero_貂蝉": 1,
+      "hero_马超": 1
+    },
+    "valueScore": 16.53
+  }
+]

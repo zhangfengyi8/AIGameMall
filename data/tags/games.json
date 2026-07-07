@@ -1,0 +1,10 @@
+﻿[
+  {
+    "id": "honor_of_kings",
+    "name": "王者荣耀",
+    "aliases": ["王者", "农药", "Honor of Kings"],
+    "platforms": ["QQ", "微信"],
+    "regions": ["安卓QQ", "苹果QQ", "安卓微信", "苹果微信"],
+    "enabled": true
+  }
+]

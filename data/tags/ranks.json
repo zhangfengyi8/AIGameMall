@@ -1,0 +1,10 @@
+﻿[
+  { "name": "青铜", "rank_score": 1, "aliases": ["青铜"] },
+  { "name": "白银", "rank_score": 2, "aliases": ["白银"] },
+  { "name": "黄金", "rank_score": 3, "aliases": ["黄金"] },
+  { "name": "铂金", "rank_score": 5, "aliases": ["铂金"] },
+  { "name": "钻石", "rank_score": 7, "aliases": ["钻石"] },
+  { "name": "星耀", "rank_score": 10, "aliases": ["星耀"] },
+  { "name": "王者", "rank_score": 15, "aliases": ["王者", "最强王者"] },
+  { "name": "荣耀王者", "rank_score": 22, "aliases": ["荣耀", "荣耀王者"] }
+]

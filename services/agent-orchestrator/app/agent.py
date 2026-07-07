@@ -1,4 +1,10 @@
-﻿import os
+"""
+核心 Agent 模块。
+集成 buyer-requirement-intake 和 account-recommendation-brief 两个技能。
+支持规则解析前置 + LLM 生成推荐。
+卡片数据通过独立搜索获取，确保前端始终能展示可点击的商品。
+"""
+import os
 from pathlib import Path
 
 import httpx
@@ -9,9 +15,10 @@ from agents.models.openai_responses import OpenAIResponsesModel
 set_tracing_disabled(True)
 
 from app.instructions import INSTRUCTIONS
-from app.tools.search import search_accounts
-from agents.items import ToolCallOutputItem
+from app.tools.search import search_accounts, _do_search
 from app.schemas.detail import format_card
+from app.skills.requirement_intake import intake as rule_intake, search_params_from_intake
+from app.skills.recommendation_brief import build_query
 
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 if _env_path.exists():
@@ -47,35 +54,89 @@ async def run_agent(
     user_message: str,
     history: list | None = None,
 ) -> dict:
-    """运行导购 Agent，返回推荐回复和相关卡片。"""
-    input_messages = (history or []) + [{"role": "user", "content": user_message}]
+    """运行导购 Agent，返回推荐回复和相关卡片。
+
+    流程：
+    1. 规则引擎做 buyer-requirement-intake（需求理解）
+    2. 如果需求明确 → 搜账号 + 构建推荐策略注入 LLM
+    3. 如果需求模糊 → 让 LLM 自行追问
+    4. 独立搜索拿到完整卡片数据返回前端
+    """
+    intake_result = rule_intake(user_message)
+    ready = intake_result["ready_for_recommendation"]
+
+    # ========== 需求不明确，LLM 追问 ==========
+    if not ready:
+        clarifying = intake_result.get("clarifying_question", "")
+        input_messages = (history or []) + [
+            {"role": "system", "content": (
+                "用户需求不够明确，不要搜索账号。先追问关键信息：优先问预算，其次问平台。"
+                f"建议追问：{clarifying}"
+            )},
+            {"role": "user", "content": user_message},
+        ]
+        result = await Runner.run(guide_agent, input=input_messages)
+        return {
+            "reply": result.final_output,
+            "recommendations": [],
+            "history": result.to_input_list(),
+            "intake": intake_result,
+        }
+
+    # ========== 需求明确：独立搜索 + LLM 推荐 ==========
+    # 1. 用规则引擎搜到候选账号
+    search_params = search_params_from_intake(intake_result)
+    accounts = _do_search(**search_params)
+
+    # 2. 构建推荐策略
+    brief = build_query(intake_result)
+
+    # 3. 将候选账号摘要注入 LLM，让 LLM 做推荐
+    account_summaries = []
+    for acc in accounts[:10]:
+        lid = acc.get("listingId", "?")
+        price = acc.get("salePrice", 0)
+        rank_name = acc.get("rankName", "?")
+        rank_stars = acc.get("rankStars", 0)
+        vip = acc.get("vipLevel", "?")
+        real = acc.get("secondaryRealNameStatus", "")
+        bind = acc.get("changeBindStatus", "")
+        anti = acc.get("antiAddictionStatus", "")
+        account_summaries.append(
+            f"- {lid}: {price}元, {rank_name} {rank_stars}星, V{vip}, "
+            f"防沉迷={anti}, 二次实名={real}, 换绑={bind}"
+        )
+
+    strategy_note = (
+        f"【需求解析结果】\n"
+        f"意图: {intake_result['intent']}\n"
+        f"必须条件: {'; '.join(intake_result['firm_requirements']) if intake_result['firm_requirements'] else '无'}\n"
+        f"软偏好: {'; '.join(intake_result['soft_preferences']) if intake_result['soft_preferences'] else '无'}\n"
+        f"排序权重: {brief['ranking']['weights']}\n\n"
+        f"【候选账号列表】\n" + "\n".join(account_summaries) + "\n\n"
+        f"请从以上候选账号中推荐最合适的 3 个，给出每个账号的推荐理由、性价比和风险说明。不要使用表格，用自然语言描述。"
+    )
+
+    input_messages = (history or []) + [
+        {"role": "system", "content": strategy_note},
+        {"role": "user", "content": user_message},
+    ]
     result = await Runner.run(guide_agent, input=input_messages)
 
-    reply_text = result.final_output
-
-    # 从 ToolCallOutputItem 中提取 search_accounts 的搜索结果
-    search_results = []
-    for item in result.new_items:
-        if isinstance(item, ToolCallOutputItem):
-            if isinstance(item.output, list) and len(item.output) > 0:
-                if isinstance(item.output[0], dict) and "id" in item.output[0]:
-                    search_results = item.output
-                    break
-
-    # 格式化为前端卡片（取前 10 个）
+    # 4. 返回卡片数据（独立搜索，保证前端可展示）
     cards = []
-    if search_results:
-        seen = set()
-        for acc in search_results:
-            aid = acc.get("id")
-            if aid and aid not in seen:
-                seen.add(aid)
-                cards.append(format_card(acc))
-                if len(cards) >= 10:
-                    break
+    seen = set()
+    for acc in accounts[:10]:
+        aid = acc.get("listingId")
+        if aid and aid not in seen:
+            seen.add(aid)
+            cards.append(format_card(acc))
+            if len(cards) >= 10:
+                break
 
     return {
-        "reply": reply_text,
+        "reply": result.final_output,
         "recommendations": cards,
         "history": result.to_input_list(),
+        "intake": intake_result,
     }

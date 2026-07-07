@@ -1,5 +1,5 @@
 ﻿"""
-search_accounts Tool: 按条件从 JSON 筛选账号并按性价比排序。
+search_accounts Tool: 按条件从 JSON 关联表筛选账号并按价值评分排序。
 """
 import json
 import os
@@ -8,151 +8,136 @@ from typing import Optional
 
 from agents import function_tool
 
-# 性价比排序权重
-_VALUE_ORDER = {"excellent": 0, "good": 1, "fair": 2, "expensive": 3}
-
-# 段位权重缓存
-_RANK_SCORE_MAP = {}
+# 用 os.path 避免 __file__ 在中文路径下的问题
+_BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+_DATA_DIR = os.path.join(_BASE, "data", "tags")
 
 
-def _load_rank_map() -> dict[str, int]:
-    """加载段位权重映射"""
-    rank_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "tags" / "ranks.json"
-    try:
-        with open(rank_path, encoding="utf-8-sig") as f:
-            ranks = json.load(f)
-        return {r["name"]: r["rank_score"] for r in ranks}
-    except (FileNotFoundError, json.JSONDecodeError, KeyError):
-        return {}
-
-
-def _load_accounts() -> list[dict]:
-    """加载账号 JSON 数据"""
-    accounts_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "data" / "accounts" / "accounts.json"
-    with open(accounts_path, encoding="utf-8-sig") as f:
+def _lj(fn: str) -> list[dict]:
+    with open(os.path.join(_DATA_DIR, fn), encoding="utf-8-sig") as f:
         return json.load(f)
 
 
-def _extract_rank_score(rank_text: str) -> int | None:
-    """从段位文本中提取 rank_score"""
-    global _RANK_SCORE_MAP
-    if not _RANK_SCORE_MAP:
-        _RANK_SCORE_MAP = _load_rank_map()
-    if not _RANK_SCORE_MAP:
-        return None
-    for rank_name, score in _RANK_SCORE_MAP.items():
-        if rank_name in rank_text:
-            return score
-    return None
-
-
 def _do_search(
-    game_id: Optional[str] = None,
-    budget_min: Optional[float] = None,
-    budget_max: Optional[float] = None,
-    rank_min: Optional[int] = None,
+    game_code: Optional[str] = None,
+    server_code: Optional[str] = None,
+    budget_min: Optional[int] = None,
+    budget_max: Optional[int] = None,
     heroes: Optional[list[str]] = None,
     skins: Optional[list[str]] = None,
-    tags: Optional[list[str]] = None,
     keyword: Optional[str] = None,
-    category: Optional[str] = None,
+    rank_name: Optional[str] = None,
+    anti_addiction: Optional[str] = None,
+    secondary_real_name: Optional[str] = None,
+    change_bind: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
-    """search_accounts 的内部实现（纯函数，供 fallback 和 tool 共用）"""
-    accounts = _load_accounts()
+    """search_accounts 的内部实现，供 fallback 和 tool 共用"""
+    listings = _lj("accountListing.json")
+    metrics_list = _lj("accountMetrics.json")
+    hero_master = _lj("heroMaster.json")
+    skin_master = _lj("skinMaster.json")
+    acct_hero = _lj("accountHero.json")
+    acct_skin = _lj("accountSkin.json")
+
+    hero_name_to_id = {h["heroName"]: h["heroId"] for h in hero_master}
+    skin_name_to_id = {s["skinName"]: s["skinId"] for s in skin_master}
+    metrics_by_lid = {m["listingId"]: m for m in metrics_list}
+
+    hero_ids_by_lid: dict[str, set] = {}
+    for row in acct_hero:
+        hero_ids_by_lid.setdefault(row["listingId"], set()).add(row["heroId"])
+    skin_ids_by_lid: dict[str, set] = {}
+    for row in acct_skin:
+        skin_ids_by_lid.setdefault(row["listingId"], set()).add(row["skinId"])
+
+    rank_scores = {"青铜": 1, "白银": 2, "黄金": 3, "铂金": 5, "钻石": 7, "星耀": 10, "王者": 15, "无双王者": 18, "荣耀王者": 22}
+    min_rank_score = rank_scores.get(rank_name, 0) if rank_name else 0
+
     result = []
-
-    for acc in accounts:
-        if acc.get("status") != "on_sale":
+    for lst in listings:
+        lid = lst["listingId"]
+        if game_code and lst.get("gameCode") != game_code:
             continue
-        if game_id and acc.get("game", {}).get("id") != game_id:
+        if server_code and lst.get("serverCode") != server_code:
             continue
-        if category and acc.get("category") != category:
+        sp = lst.get("salePrice", 0)
+        if budget_min is not None and sp < budget_min:
             continue
-
-        price = acc.get("price", 0)
-        if budget_min is not None and price < budget_min:
+        if budget_max is not None and sp > budget_max:
             continue
-        if budget_max is not None and price > budget_max:
+        if rank_name and rank_scores.get(lst.get("rankName", ""), 0) < min_rank_score:
             continue
-
-        if rank_min is not None:
-            rank_text = acc.get("rank", {}).get("current", "")
-            rs = _extract_rank_score(rank_text)
-            if rs is None or rs < rank_min:
-                continue
-
+        if anti_addiction and lst.get("antiAddictionStatus") != anti_addiction:
+            continue
+        if secondary_real_name and lst.get("secondaryRealNameStatus") != secondary_real_name:
+            continue
+        if change_bind and lst.get("changeBindStatus") != change_bind:
+            continue
         if heroes:
-            acc_heroes = [h.lower() for h in acc.get("highlights", {}).get("heroes", [])]
-            if not any(h.lower() in acc_heroes for h in heroes):
+            lid_heroes = hero_ids_by_lid.get(lid, set())
+            if not any(hero_name_to_id.get(h) in lid_heroes for h in heroes if hero_name_to_id.get(h)):
                 continue
-
         if skins:
-            acc_skins = [s.lower() for s in acc.get("highlights", {}).get("skins", [])]
-            if not any(s.lower() in acc_skins for s in skins):
+            lid_skins = skin_ids_by_lid.get(lid, set())
+            if not any(skin_name_to_id.get(s) in lid_skins for s in skins if skin_name_to_id.get(s)):
                 continue
-
-        if tags:
-            acc_tags = [t.lower() for t in acc.get("highlights", {}).get("tags", [])]
-            if not any(t.lower() in acc_tags for t in tags):
-                continue
-
         if keyword:
             kw = keyword.lower()
-            title = acc.get("title", "").lower()
-            acc_tags_text = " ".join(acc.get("highlights", {}).get("tags", [])).lower()
-            if kw not in title and kw not in acc_tags_text:
-                continue
+            if kw not in lid.lower():
+                lid_hero_ids = hero_ids_by_lid.get(lid, set())
+                matched = any(kw in hm["heroName"].lower() for hm in hero_master if hm["heroId"] in lid_hero_ids)
+                if not matched:
+                    continue
+        result.append(lst)
 
-        result.append(acc)
-
-    result.sort(
-        key=lambda a: (
-            _VALUE_ORDER.get(a.get("valuation", {}).get("value_level", "fair"), 99),
-            a.get("price", 0),
-        )
-    )
-
+    result.sort(key=lambda a: -(metrics_by_lid.get(a["listingId"], {}).get("valueScore", 0) or 0))
     return result[:limit]
 
 
 @function_tool
 def search_accounts(
-    game_id: Optional[str] = None,
-    budget_min: Optional[float] = None,
-    budget_max: Optional[float] = None,
-    rank_min: Optional[int] = None,
+    game_code: Optional[str] = None,
+    server_code: Optional[str] = None,
+    budget_min: Optional[int] = None,
+    budget_max: Optional[int] = None,
     heroes: Optional[list[str]] = None,
     skins: Optional[list[str]] = None,
-    tags: Optional[list[str]] = None,
     keyword: Optional[str] = None,
-    category: Optional[str] = None,
+    rank_name: Optional[str] = None,
+    anti_addiction: Optional[str] = None,
+    secondary_real_name: Optional[str] = None,
+    change_bind: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
     """
-    根据条件从 JSON 数据中筛选游戏账号，返回按性价比排序的匹配账号列表。
+    根据条件从 JSON 数据中筛选游戏账号，返回按价值评分排序的匹配账号列表。
 
     参数说明：
-    - game_id: 游戏 ID，如 "honor_of_kings"
-    - budget_min: 最低预算
-    - budget_max: 最高预算
-    - rank_min: 最低段位分数（rank_score）
-    - heroes: 期望包含的英雄列表
-    - skins: 期望包含的皮肤列表
-    - tags: 期望包含的标签列表
-    - keyword: 搜索关键词（匹配标题和亮点标签）
-    - category: 账号分类，如"皮肤号"、"技术号"、"低价号"
+    - game_code: 游戏编码，"WZ"表示王者荣耀
+    - server_code: 区服，如 "ANDROID_QQ"、"IOS_WECHAT"
+    - budget_min: 最低预算（分，如 50000 表示 500 元）
+    - budget_max: 最高预算（分）
+    - heroes: 期望包含的英雄名称列表（如 ["李白", "孙尚香"]）
+    - skins: 期望包含的皮肤名称列表（如 ["凤求凰"]）
+    - keyword: 搜索关键词
+    - rank_name: 最低段位要求（如 "星耀"、"王者"）
+    - anti_addiction: 防沉迷筛选，"NONE"或"RESTRICTED"
+    - secondary_real_name: 二次实名筛选，"SUPPORTED"或"NOT_SUPPORTED"
+    - change_bind: 换绑状态，"FULL_SUPPORTED"或"NOT_SUPPORTED"
     - limit: 最多返回数量（默认 10）
     """
     return _do_search(
-        game_id=game_id,
+        game_code=game_code,
+        server_code=server_code,
         budget_min=budget_min,
         budget_max=budget_max,
-        rank_min=rank_min,
         heroes=heroes,
         skins=skins,
-        tags=tags,
         keyword=keyword,
-        category=category,
+        rank_name=rank_name,
+        anti_addiction=anti_addiction,
+        secondary_real_name=secondary_real_name,
+        change_bind=change_bind,
         limit=limit,
     )

@@ -1,145 +1,59 @@
-﻿"""
-规则降级引擎：当模型不可用时，用关键词提取条件并返回模板推荐。
+"""
+规则降级引擎：当模型不可用时，用技能模块（intake + brief）生成推荐。
 """
 import re
 
+from app.skills.requirement_intake import intake as rule_intake, search_params_from_intake
+from app.skills.recommendation_brief import build_query
 from app.tools.search import _do_search
 
 
-def extract_intent(text: str) -> dict:
-    """
-    从用户文本中用关键词提取搜索条件。
-
-    Returns:
-        可直接传给 search_accounts 的参数 dict
-    """
-    params: dict = {}
-    text_lower = text.lower()
-
-    # 提取预算
-    budget_pattern = re.compile(
-        r"(\d+)\s*[块元]|预算[约大概]?(\d+)|(\d+)\s*以内|(\d+)\s*以下"
-    )
-    budgets = budget_pattern.findall(text)
-    if budgets:
-        max_budget = None
-        for b in budgets:
-            vals = [int(x) for x in b if x]
-            if vals:
-                v = vals[0]
-                if max_budget is None or v > max_budget:
-                    max_budget = v
-        if max_budget is not None:
-            params["budget_max"] = max_budget
-
-    # 提取游戏
-    if any(kw in text_lower for kw in ["王者荣耀", "王者", "农药", "honor of kings"]):
-        params["game_id"] = "honor_of_kings"
-
-    # 提取分类
-    category_map = {
-        "皮肤号": ["皮肤"],
-        "氪佬号": ["氪佬", "顶配", "神号"],
-        "技术号": ["技术", "战力", "国服"],
-        "低价号": ["低价", "入门", "便宜"],
-        "收藏号": ["收藏", "绝版"],
-    }
-    for cat, keywords in category_map.items():
-        if any(kw in text_lower for kw in keywords):
-            params["category"] = cat
-            break
-
-    # 提取英雄
-    known_heroes = [
-        "孙尚香", "李白", "貂蝉", "鲁班七号", "铠", "武则天",
-        "孙悟空", "花木兰", "韩信", "后羿", "赵云", "瑶", "大乔", "镜", "马超",
-    ]
-    matched_heroes = [h for h in known_heroes if h in text]
-    if matched_heroes:
-        params["heroes"] = matched_heroes
-
-    # 提取皮肤
-    known_skins = [
-        "杀手不太冷", "末日机甲", "仲夏夜之梦", "凤求凰", "至尊宝",
-        "倪克斯神谕", "天鹅之梦", "全息碎影", "白龙吟", "地狱火",
-        "遇见神鹿", "炽阳神光",
-    ]
-    matched_skins = [s for s in known_skins if s in text]
-    if matched_skins:
-        params["skins"] = matched_skins
-
-    # 提取标签
-    if any(kw in text_lower for kw in ["全英雄"]):
-        params.setdefault("tags", [])
-        params["tags"].append("全英雄")
-    if any(kw in text_lower for kw in ["低风险", "风险低", "安全"]):
-        params.setdefault("tags", [])
-        params["tags"].append("低风险")
-    if any(kw in text_lower for kw in ["可换绑", "换绑"]):
-        params.setdefault("tags", [])
-        params["tags"].append("可换绑")
-
-    # 提取段位
-    rank_map = {
-        "青铜": 1, "白银": 2, "黄金": 3, "铂金": 5,
-        "钻石": 7, "星耀": 10, "王者": 15, "荣耀王者": 22,
-    }
-    for rank_name, score in rank_map.items():
-        if rank_name in text:
-            params["rank_min"] = score
-            break
-
-    return params
-
-
-def generate_fallback_reply(
-    accounts: list[dict], user_text: str
-) -> str:
-    """根据搜索结果生成模板推荐回复。"""
-    if not accounts:
-        return (
-            "抱歉，暂时没有找到完全符合你要求的账号。"
-            "你可以试试放宽预算或者调整一下条件。"
-        )
-
-    lines = [f"为你推荐以下 {len(accounts[:3])} 个账号：\n"]
-    for i, acc in enumerate(accounts[:3], 1):
-        title = acc.get("title", "未知")
-        price = acc.get("price", 0)
-        rank = acc.get("rank", {}).get("current", "未知")
-        value_label = acc.get("valuation", {}).get("value_label", "")
-        risk_label = acc.get("risk", {}).get("label", "")
-        skin_count = acc.get("account_assets", {}).get("skin_count", 0)
-
-        lines.append(
-            f"{i}. {title}"
-            f"\n   价格：{price}元"
-            f"\n   段位：{rank}"
-            f"\n   皮肤数：{skin_count}"
-            f"\n   性价比：{value_label}  风险：{risk_label}"
-        )
-
-        # 风险提示
-        warnings = acc.get("risk", {}).get("warnings", [])
-        if warnings:
-            lines.append(f"   注意：{'；'.join(warnings)}")
-
-        lines.append("")
-
-    return "\n".join(lines)
-
-
 def run_fallback(user_message: str) -> dict:
-    """
-    规则降级入口：提取条件 -> 搜索 -> 生成回复
+    """规则降级入口：使用 buyer-requirement-intake + account-recommendation-brief 技能。"""
+    # Step 1: 需求理解
+    intake_result = rule_intake(user_message)
 
-    Returns:
-        与 run_agent() 一致的返回结构
-    """
-    intent = extract_intent(user_message)
-    accounts = _do_search(**intent)
+    if not intake_result["ready_for_recommendation"]:
+        # 需求不明确，直接追问
+        clarifying = intake_result.get("clarifying_question", "")
+        if not clarifying:
+            clarifying = "预算大概多少？最高能接受到多少？另外你要 QQ 还是微信，安卓还是 iOS？"
+        reply = f"好的，我先了解下你的需求。{clarifying}"
+        return {
+            "reply": reply,
+            "history": [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": reply},
+            ],
+        }
+
+    # Step 2: 构建推荐策略
+    brief = build_query(intake_result)
+    filters = brief["query"]["filters"]
+    weights = brief["ranking"]["weights"]
+    fallbacks = brief["recommendation_policy"]["fallbacks"]
+
+    # Step 3: 执行搜索
+    search_params = search_params_from_intake(intake_result)
+    accounts = _do_search(**search_params)
+
+    # Step 4: 如果结果太少，尝试降级
+    if len(accounts) < 3 and fallbacks:
+        # 先去掉软偏好，放宽搜索
+        relaxed_params = dict(search_params)
+        relaxed_params.pop("heroes", None)
+        relaxed_params.pop("skins", None)
+        relaxed_params.pop("rank_name", None)
+        if "expand_budget_20pct" in fallbacks:
+            b_max = relaxed_params.get("budget_max")
+            if b_max:
+                relaxed_params["budget_max"] = int(b_max * 1.2)
+        accounts2 = _do_search(**relaxed_params)
+        if len(accounts2) > len(accounts):
+            accounts = accounts2
+
+    # Step 5: 生成回复
     reply = generate_fallback_reply(accounts, user_message)
-
     return {
         "reply": reply,
         "history": [
@@ -147,3 +61,30 @@ def run_fallback(user_message: str) -> dict:
             {"role": "assistant", "content": reply},
         ],
     }
+
+
+def generate_fallback_reply(accounts: list[dict], user_text: str) -> str:
+    """根据搜索结果生成模板推荐回复。"""
+    if not accounts:
+        return "抱歉，暂时没有找到完全符合你要求的账号。你可以试试放宽预算或者调整一下条件。"
+
+    lines = [f"为你推荐以下 {len(accounts[:3])} 个账号：\n"]
+    for i, lst in enumerate(accounts[:3], 1):
+        lid = lst.get("listingId", "?")
+        sc = lst.get("serverCode", "?")
+        sp = lst.get("salePrice", 0)
+        rn = lst.get("rankName", "?")
+        rs = lst.get("rankStars", 0)
+        vip = lst.get("vipLevel", "?")
+        anti = "有防沉迷" if lst.get("antiAddictionStatus") == "RESTRICTED" else "无防沉迷"
+        real = "支持二次实名" if lst.get("secondaryRealNameStatus") == "SUPPORTED" else "不支持二次实名"
+        bind = "可换绑" if lst.get("changeBindStatus") == "FULL_SUPPORTED" else "不可换绑"
+
+        lines.append(
+            f"{i}. {lid} [{sc}]"
+            f"\n   价格：{sp}元  段位：{rn} {rs}星"
+            f"\n   VIP{vip}  {anti}  {real}  {bind}"
+        )
+        lines.append("")
+
+    return "\n".join(lines)
