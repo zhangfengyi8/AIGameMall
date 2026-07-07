@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.server import build_server_config
 
 
 client = TestClient(app)
@@ -116,3 +117,12 @@ def test_removed_api_surface_is_not_exposed():
     assert client.get("/health").status_code == 404
     assert client.get("/api/v1/guide/home").status_code == 404
     assert client.get("/api/v1/skins").status_code == 404
+
+
+def test_server_config_runs_api_app_on_localhost():
+    config = build_server_config()
+
+    assert config.app == "app.main:app"
+    assert config.host == "0.0.0.0"
+    assert config.port == 8000
+    assert config.reload is False

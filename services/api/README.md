@@ -54,7 +54,7 @@ GET /api/v1/accounts/listing_10019
 在部署服务器的 `services/api` 目录下启动 API 服务：
 
 ```bash
-uv run --python 3.11 aigamemall-api
+uv run --python 3.11 python -m app.server
 ```
 
 默认监听：
@@ -70,16 +70,31 @@ http://<api-server-host>:8000/api/v1/agent-results/render
 http://<api-server-host>:8000/api/v1/accounts/{account_id}
 ```
 
+当前这台机器的局域网访问地址：
+
+```text
+http://192.168.10.132:8000
+```
+
+给同一局域网内其他人使用：
+
+```text
+http://192.168.10.132:8000/api/v1/agent-results/render
+http://192.168.10.132:8000/api/v1/accounts/{account_id}
+```
+
+如果网络切换，`192.168.10.132` 可能变化，需要重新用 `ipconfig` 查看 WLAN 的 IPv4 地址。
+
 如需修改监听地址或端口：
 
 ```bash
-AIGAMEMALL_API_HOST=0.0.0.0 AIGAMEMALL_API_PORT=8080 uv run --python 3.11 aigamemall-api
+AIGAMEMALL_API_HOST=0.0.0.0 AIGAMEMALL_API_PORT=8080 uv run --python 3.11 python -m app.server
 ```
 
 本地开发需要热重载时再显式开启：
 
 ```bash
-AIGAMEMALL_API_RELOAD=true uv run --python 3.11 aigamemall-api
+AIGAMEMALL_API_RELOAD=true uv run --python 3.11 python -m app.server
 ```
 
 ## 测试
