@@ -91,7 +91,7 @@ export default function AIAssistant({ accounts, onCardClick }) {
       <div className={`ai-panel${isOpen ? ' open' : ''}`}>
         <div className="ai-panel-header">
           <div className="ai-title">
-            <div className="ai-avatar">🤖</div>
+            <div className="ai-avatar">🐯</div>
             <div>
               <div className="ai-name">AI 智能导购</div>
               <div className="ai-desc">帮你找到最合适的账号</div>

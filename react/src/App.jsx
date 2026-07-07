@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { accounts } from './data/accounts'
 import AIAssistant from './components/AIAssistant'
+import AccountDetailModal from './components/AccountDetailModal'
 
 const GRADIENT_MAP = {
   '氪佬号': '#ff9500,#ff4757',
@@ -241,68 +242,7 @@ export default function App() {
       </footer>
 
       {/* Account Detail Modal */}
-      {modalAccount && (
-        <div className="modal-overlay open" onClick={e => { if (e.target === e.currentTarget) setModalAccount(null) }}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{modalAccount.title}</h3>
-              <button className="modal-close" onClick={() => setModalAccount(null)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="detail-grid">
-                <div className="detail-section">
-                  <h5>🎮 英雄资产</h5>
-                  <div className="detail-row"><span>英雄数量</span><span className="dv">{modalAccount.heroes} / 120 {modalAccount.heroesFull ? '✅ 全英雄' : ''}</span></div>
-                  <div className="detail-row"><span>核心英雄</span><span className="dv">{modalAccount.heroList.join('、')}</span></div>
-                  <div className="detail-row"><span>位置倾向</span><span className="dv">{modalAccount.position}号</span></div>
-                  <div className="detail-row"><span>主打英雄</span><span className="dv">{modalAccount.topHero}</span></div>
-                </div>
-                <div className="detail-section">
-                  <h5>🎨 皮肤资产</h5>
-                  <div className="detail-row"><span>皮肤总数</span><span className="dv">{modalAccount.skins}</span></div>
-                  <div className="detail-row"><span>传说皮肤</span><span className="dv">{modalAccount.skinsLegend} 个</span></div>
-                  <div className="detail-row"><span>限定皮肤</span><span className="dv">{modalAccount.skinsLimited} 个</span></div>
-                  <div className="detail-row"><span>荣耀典藏</span><span className="dv">{modalAccount.skinsCollector} 个</span></div>
-                  <div className="detail-row"><span>核心皮肤</span><span className="dv">{modalAccount.highlightSkins.slice(0, 4).join('、')}</span></div>
-                </div>
-                <div className="detail-section">
-                  <h5>🏆 竞技属性</h5>
-                  <div className="detail-row"><span>当前段位</span><span className="dv">{modalAccount.rank}</span></div>
-                  <div className="detail-row"><span>贵族等级</span><span className="dv">V{modalAccount.vip}</span></div>
-                  <div className="detail-row"><span>账号等级</span><span className="dv">Lv.{modalAccount.level}</span></div>
-                  <div className="detail-row"><span>账号风格</span><span className="dv">{modalAccount.style}</span></div>
-                  <div className="detail-row"><span>所在大区</span><span className="dv">{modalAccount.region}</span></div>
-                </div>
-                <div className="detail-section">
-                  <h5>💰 价格评估</h5>
-                  <div className="detail-row">
-                    <span>卖家报价</span>
-                    <span className="dv" style={{ color: 'var(--orange)', fontSize: '22px', fontWeight: 700 }}>¥{modalAccount.price.toLocaleString()}</span>
-                  </div>
-                  <div className="detail-row"><span>系统估价</span><span className="dv">¥{modalAccount.estValue.toLocaleString()}</span></div>
-                  <div className="detail-row">
-                    <span>性价比</span>
-                    <span className="dv" style={{ color: modalAccount.estTag === 'good' ? 'var(--brand-green-dark)' : 'var(--orange)' }}>{modalAccount.estLabel}</span>
-                  </div>
-                  <div className="detail-row"><span>匹配度</span><span className="dv">{modalAccount.match}%</span></div>
-                </div>
-                <div className="detail-section detail-full">
-                  <h5>🛡 风险评估</h5>
-                  <div className={`risk-bar ${modalAccount.risk === '低' ? 'risk-low' : modalAccount.risk === '中' ? 'risk-mid' : 'risk-high'}`}>
-                    <span style={{ fontSize: '18px' }}>{modalAccount.risk === '低' ? '✅' : modalAccount.risk === '中' ? '⚠' : '❌'}</span>
-                    <span>风险等级：<strong>{modalAccount.risk}</strong></span>
-                  </div>
-                  <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    {modalAccount.riskItems.map((item, i) => (
-                      <div key={i} style={{ padding: '4px 0' }}>{i + 1}. {item}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <AccountDetailModal account={modalAccount} onClose={() => setModalAccount(null)} />
 
       {/* AI Assistant */}
       <AIAssistant accounts={accounts} onCardClick={openDetail} />
