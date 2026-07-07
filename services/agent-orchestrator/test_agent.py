@@ -52,7 +52,7 @@ if not api_key:
         print("\n再见！")
 
 else:
-    from app.agent import run_agent
+    from app.agent import run_agent_stream
 
     async def main():
         history = None
@@ -64,9 +64,18 @@ else:
                     break
                 if not msg.strip():
                     continue
-                result = await run_agent(msg, history)
-                print(f"\n[导购] {result['reply']}")
-                history = result["history"]
+                print("\n[导购] ", end="", flush=True)
+                final_result = None
+                async for event in run_agent_stream(msg, history):
+                    event_name = event["event"]
+                    data = event["data"]
+                    if event_name == "message_delta":
+                        print(data["text"], end="", flush=True)
+                    elif event_name == "done":
+                        final_result = data
+                print()
+                if final_result:
+                    history = final_result["history"]
         except (EOFError, KeyboardInterrupt):
             print("\n再见！")
 
