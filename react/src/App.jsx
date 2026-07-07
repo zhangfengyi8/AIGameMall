@@ -3,6 +3,8 @@ import { accounts } from './data/accounts'
 import AIAssistant from './components/AIAssistant'
 import AccountDetailModal from './components/AccountDetailModal'
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://192.168.10.132:8000').replace(/\/$/, '')
+
 const GRADIENT_MAP = {
   '氪佬号': '#ff9500,#ff4757',
   '技术号': '#3b65ff,#4579ff',
@@ -38,8 +40,21 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  function openDetail(id) {
-    setModalAccount(accounts.find(a => a.id === id) || null)
+  async function openDetail(id) {
+    const localAccount = accounts.find(a => a.id === id)
+    if (localAccount) {
+      setModalAccount(localAccount)
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/accounts/${id}`)
+      if (!response.ok) return
+      const detail = await response.json()
+      setModalAccount(toModalAccount(detail))
+    } catch (error) {
+      setModalAccount(null)
+    }
   }
 
   return (
@@ -245,7 +260,45 @@ export default function App() {
       <AccountDetailModal account={modalAccount} onClose={() => setModalAccount(null)} />
 
       {/* AI Assistant */}
-      <AIAssistant accounts={accounts} onCardClick={openDetail} />
+      <AIAssistant onCardClick={openDetail} />
     </>
   )
+}
+
+function toModalAccount(detail) {
+  const vip = detail.assets?.currencies?.vip_level || 0
+  const level = detail.assets?.currencies?.account_level || 0
+  return {
+    id: detail.id,
+    title: detail.title,
+    heroes: detail.assets?.heroes || 0,
+    heroesFull: false,
+    heroList: detail.tags?.length ? detail.tags : ['详情页查看'],
+    position: '综合',
+    topHero: detail.tags?.[0] || '未标注',
+    skins: detail.assets?.skins || 0,
+    skinsLegend: 0,
+    skinsLimited: 0,
+    skinsCollector: 0,
+    highlightSkins: detail.assets?.rare_skins || [],
+    rank: detail.rank,
+    vip,
+    level,
+    style: detail.tags?.[0] || '账号',
+    region: detail.server,
+    price: detail.price,
+    estValue: detail.price,
+    estLabel: '参考报价',
+    estTag: 'fair',
+    match: 100,
+    risk: riskLabel(detail.risk?.level),
+    riskItems: detail.risk?.notes?.length ? detail.risk.notes : detail.purchase_tips || [],
+  }
+}
+
+function riskLabel(level) {
+  if (level === 'low') return '低'
+  if (level === 'medium' || level === 'mid') return '中'
+  if (level === 'high') return '高'
+  return '中'
 }

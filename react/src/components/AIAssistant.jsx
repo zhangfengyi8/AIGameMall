@@ -1,39 +1,29 @@
 import { useState, useRef, useEffect } from 'react'
 
-const HEROES = ['孙尚香', '李白', '貂蝉', '鲁班', '后羿', '花木兰', '武则天', '孙悟空', '韩信', '裴擒虎', '马可波罗', '诸葛亮', '小乔', '安琪拉', '妲己', '铠', '宫本武藏', '关羽', '马超']
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://192.168.10.132:8000').replace(/\/$/, '')
 
-function matchAccounts(msg, accounts) {
-  let results = [...accounts]
-  const matchedHero = HEROES.find(h => msg.includes(h))
-  if (matchedHero) {
-    results = results.filter(a => a.heroList.some(h => h.includes(matchedHero)) || a.title.includes(matchedHero))
-    results.sort((a, b) => {
-      const aHas = a.heroList.some(h => h.includes(matchedHero)) ? 1 : 0
-      const bHas = b.heroList.some(h => h.includes(matchedHero)) ? 1 : 0
-      return bHas - aHas || b.match - a.match
-    })
+function parseSseChunk(buffer) {
+  const parts = buffer.split('\n\n')
+  return {
+    events: parts.slice(0, -1).map(part => {
+      const eventLine = part.split('\n').find(line => line.startsWith('event: '))
+      const dataLine = part.split('\n').find(line => line.startsWith('data: '))
+      return {
+        event: eventLine ? eventLine.slice(7) : 'message',
+        data: dataLine ? JSON.parse(dataLine.slice(6)) : null,
+      }
+    }),
+    rest: parts[parts.length - 1],
   }
-  if (msg.includes('便宜') || msg.includes('入门')) results = results.filter(a => a.price <= 1000)
-  else if (msg.includes('3000') || msg.includes('3千')) results = results.filter(a => a.price >= 2000 && a.price <= 4000)
-  else if (msg.includes('5000') || msg.includes('5千')) results = results.filter(a => a.price >= 4000 && a.price <= 6000)
-  if (msg.includes('王者')) results = results.filter(a => a.rankNum >= 16)
-  if (msg.includes('星耀')) results = results.filter(a => a.rankNum >= 10 && a.rankNum < 16)
-  if (msg.includes('射手')) results = results.filter(a => a.position === '射手')
-  if (msg.includes('法师')) results = results.filter(a => a.position === '法师')
-  if (msg.includes('打野')) results = results.filter(a => a.position === '打野')
-  if (msg.includes('全皮') || msg.includes('全皮肤')) results = results.filter(a => a.highlightSkins.length >= 3)
-  if (msg.includes('典藏')) results = results.filter(a => a.skinsCollector > 0)
-  if (msg.includes('限定')) results = results.filter(a => a.skinsLimited > 10)
-  if (msg.includes('技术') || msg.includes('战力') || msg.includes('国服')) results = results.filter(a => a.style === '技术号')
-  if (msg.includes('氪佬') || msg.includes('v10') || msg.includes('V10')) results = results.filter(a => a.style === '氪佬号' || a.vip >= 8)
-  return { top3: results.slice(0, 3), matchedHero: matchedHero || null }
 }
 
-export default function AIAssistant({ accounts, onCardClick }) {
+export default function AIAssistant({ onCardClick }) {
   const [isOpen, setIsOpen] = useState(false)
   const [showBadge, setShowBadge] = useState(true)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([{ id: 0, type: 'welcome' }])
+  const historyRef = useRef([])
+  const sessionIdRef = useRef(`web-${Date.now()}`)
   const bodyRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -49,7 +39,7 @@ export default function AIAssistant({ accounts, onCardClick }) {
 
   function close() { setIsOpen(false) }
 
-  function sendMsg(text) {
+  async function sendMsg(text) {
     const msg = (text !== undefined ? text : input).trim()
     if (!msg) return
     setInput('')
@@ -62,17 +52,93 @@ export default function AIAssistant({ accounts, onCardClick }) {
       { id: thinkId, type: 'thinking' },
     ])
 
-    setTimeout(() => {
-      const { top3, matchedHero } = matchAccounts(msg, accounts)
+    try {
+      await requestAgentStream(msg, thinkId)
+    } catch (error) {
       setMessages(prev => prev.map(m =>
         m.id === thinkId
-          ? { id: thinkId, type: 'result', top3, matchedHero, query: msg }
+          ? { id: thinkId, type: 'error', text: '暂时无法连接导购服务，请稍后再试。' }
           : m
       ))
-    }, 1500)
+    }
   }
 
   function quickSearch(text) { sendMsg(text) }
+
+  async function requestAgentStream(message, messageId) {
+    const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionIdRef.current,
+        message,
+        history: historyRef.current,
+      }),
+    })
+    if (!response.ok || !response.body) throw new Error('chat stream failed')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    setMessages(prev => prev.map(m =>
+      m.id === messageId
+        ? { id: messageId, type: 'result', responseType: 'clarification', message: '', cards: [] }
+        : m
+    ))
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parsed = parseSseChunk(buffer)
+      buffer = parsed.rest
+      parsed.events.forEach(evt => applyAgentEvent(messageId, evt))
+    }
+  }
+
+  function applyAgentEvent(messageId, evt) {
+    if (evt.event === 'message_delta') {
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, message: `${m.message || ''}${evt.data?.text || ''}` }
+          : m
+      ))
+      return
+    }
+
+    if (evt.event === 'recommendations') {
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, responseType: 'recommendations', cards: evt.data || [] }
+          : m
+      ))
+      return
+    }
+
+    if (evt.event === 'done') {
+      historyRef.current = evt.data?.history || historyRef.current
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? {
+              ...m,
+              responseType: evt.data?.type || m.responseType,
+              message: evt.data?.message || m.message,
+              cards: evt.data?.cards || m.cards || [],
+            }
+          : m
+      ))
+      return
+    }
+
+    if (evt.event === 'error') {
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { id: messageId, type: 'error', text: evt.data?.detail || '导购服务异常。' }
+          : m
+      ))
+    }
+  }
 
   return (
     <>
@@ -142,20 +208,17 @@ export default function AIAssistant({ accounts, onCardClick }) {
             )
 
             if (m.type === 'result') {
-              const { top3, matchedHero, query } = m
+              const cards = m.cards || []
               return (
                 <div className="msg msg-ai" key={m.id}>
                   <div className="ai-msg-avatar">🤖</div>
                   <div className="msg-bubble" style={{ maxWidth: '340px' }}>
-                    {top3.length > 0 ? (
+                    {cards.length > 0 ? (
                       <>
                         <div style={{ marginBottom: '6px' }}>
-                          {matchedHero
-                            ? <>我找到了<strong>{top3.length}</strong>个包含<strong>{matchedHero}</strong>的优质账号：</>
-                            : <>根据你的需求，为你推荐<strong>{top3.length}</strong>个匹配账号：</>
-                          }
+                          {m.message || <>根据你的需求，为你推荐<strong>{cards.length}</strong>个匹配账号：</>}
                         </div>
-                        {top3.map((a, i) => (
+                        {cards.map((a, i) => (
                           <div className="ai-card" key={a.id} onClick={() => onCardClick(a.id)}>
                             <div className="ai-card-top">
                               <span className="ai-card-title">{i === 0 ? '🔥 ' : ''}{a.title}</span>
@@ -173,7 +236,7 @@ export default function AIAssistant({ accounts, onCardClick }) {
                                 <div className="ai-card-price-row">
                                   <span className="ai-card-price">¥{a.price.toLocaleString()}</span>
                                   <span className="ai-card-estimate">估价 <span className="est-val">¥{a.estValue.toLocaleString()}</span></span>
-                                  <span className={`ai-card-value-tag ${a.estTag === 'good' ? 'val-good' : 'val-fair'}`}>{a.estLabel}</span>
+                                  <span className={`ai-card-value-tag ${a.estLabel === '高性价比' ? 'val-good' : 'val-fair'}`}>{a.estLabel}</span>
                                 </div>
                                 <div className="ai-card-risk">🛡 风险{a.risk} · {a.riskItems.slice(0, 2).join(' · ')}</div>
                               </div>
@@ -181,19 +244,25 @@ export default function AIAssistant({ accounts, onCardClick }) {
                           </div>
                         ))}
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          💡 推荐理由：{top3[0].highlightSkins.slice(0, 3).join('、')}等核心皮肤，{top3[0].estLabel}，{top3[0].riskItems[0]}
+                          💡 推荐理由：{cards[0].highlightSkins.slice(0, 3).join('、') || '账号资产匹配'}，{cards[0].estLabel}，{cards[0].riskItems[0]}
                         </div>
                       </>
                     ) : (
                       <div style={{ color: 'var(--text-secondary)' }}>
-                        抱歉，没有找到完全匹配的账号 😔<br />
-                        试试调整条件：去掉段位限制、放宽价格区间？
+                        {m.message || '正在整理回复...'}
                       </div>
                     )}
                   </div>
                 </div>
               )
             }
+
+            if (m.type === 'error') return (
+              <div className="msg msg-ai" key={m.id}>
+                <div className="ai-msg-avatar">🤖</div>
+                <div className="msg-bubble" style={{ color: 'var(--red)' }}>{m.text}</div>
+              </div>
+            )
 
             return null
           })}

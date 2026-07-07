@@ -1,43 +1,91 @@
 # AIGameMall API
 
-API 目录只提供给前端使用的业务接口，不负责页面展示，也不直接实现 agent 能力。
+API 是前端和 agent 之间的后端接口层。前端只依赖 API 返回的稳定结构，不直接依赖 agent 原始输出。
 
-当前 API 只做两件事：
-
-1. 接收 agent 返回结果，转换成前端可渲染的数据。
-2. 根据账号 ID 查询账号详情。
-
-## 接口
-
-### 渲染 agent 返回内容
-
-```http
-POST /api/v1/agent-results/render
-```
-
-前端把 agent 返回的 `reply`、`recommendations`、`history`、`intake` 传给这个接口。
-
-API 会返回两种结果：
-
-- `type: "clarification"`：没有推荐账号，只展示文本，引导用户补充需求。
-- `type: "recommendations"`：有推荐账号，返回前端账号卡片列表。
-
-前端主要使用返回字段：
+## 整体链路
 
 ```text
-message   展示给用户的文本
-cards     推荐账号卡片
-history   会话上下文，继续对话时透传
-intake    需求解析结果，按需使用
+前端输入需求
+  -> POST /api/v1/chat/stream
+  -> API 调用 agent
+  -> API 透传文本增量并判断最终内容类型
+  -> 前端流式展示文本或账号卡片
+
+前端点击账号卡片
+  -> GET /api/v1/accounts/{account_id}
+  -> API 返回账号详情
 ```
 
-### 查询账号详情
+## 前端调用的接口
+
+### 1. 用户对话，流式
+
+```http
+POST /api/v1/chat/stream
+```
+
+前端优先调用这个接口提交用户需求，响应类型是 `text/event-stream`。
+
+请求字段：
+
+```text
+session_id  会话 ID
+message     用户输入
+history     上一次 done 事件返回的会话上下文，可为空
+```
+
+SSE 事件：
+
+```text
+message_delta    文本增量，前端用于打字机展示
+recommendations  推荐账号卡片，前端展示卡片
+done             本轮最终结果，包含 type/message/cards/history/intake
+error            agent 调用失败
+```
+
+`done` 事件字段：
+
+```text
+type      返回内容类型：clarification 或 recommendations
+message   展示给用户的文本
+cards     推荐账号卡片，可能为空
+history   会话上下文，下一轮继续透传
+intake    agent 需求解析结果，前端按需使用
+```
+
+前端展示规则：
+
+```text
+type = clarification
+  只展示 message，引导用户补充需求
+
+type = recommendations
+  展示 message 和 cards 账号卡片
+```
+
+### 2. 用户对话，非流式
+
+```http
+POST /api/v1/chat
+```
+
+非流式兼容接口。请求字段和 `/api/v1/chat/stream` 一样，直接返回完整 JSON：
+
+```text
+type
+message
+cards
+history
+intake
+```
+
+### 3. 账号详情
 
 ```http
 GET /api/v1/accounts/{account_id}
 ```
 
-前端点击推荐卡片后，用卡片的 `id` 查询账号详情。
+前端点击推荐卡片后调用这个接口。
 
 例如：
 
@@ -49,9 +97,58 @@ GET /api/v1/accounts/listing_10019
 
 账号不存在时返回 `404`。
 
-## 启动
+## API 调用 agent
 
-在部署服务器的 `services/api` 目录下启动 API 服务：
+`POST /api/v1/chat/stream` 和 `POST /api/v1/chat` 内部都会调用 agent。
+
+当前调用方式：
+
+```text
+app.routers.chat
+  -> app.services.agent_client.run_agent_stream(...)
+  -> services/agent-orchestrator
+
+app.routers.chat
+  -> app.services.agent_client.run_agent(...)
+  -> services/agent-orchestrator
+```
+
+agent 返回的核心字段：
+
+```text
+reply             agent 文本回复
+recommendations   推荐账号列表，可能为空
+history           会话上下文
+intake            需求解析结果
+```
+
+## 如何区分 agent 返回内容
+
+区分逻辑在 API 内部完成，前端不需要直接判断 agent 原始字段。
+
+判断规则：
+
+```text
+recommendations 为空
+  -> type = clarification
+  -> 表示 agent 在引导用户补充需求
+
+recommendations 不为空
+  -> type = recommendations
+  -> 表示 agent 返回了推荐账号
+```
+
+这层转换逻辑在：
+
+```text
+app/routers/agent_results.py
+```
+
+它不是前端直接调用的接口，只是 API 内部把 agent 结果转换成前端展示结构。
+
+## 启动服务
+
+在 `services/api` 目录下启动：
 
 ```bash
 uv run --python 3.11 python -m app.server
@@ -63,48 +160,24 @@ uv run --python 3.11 python -m app.server
 0.0.0.0:8000
 ```
 
-前端请求时使用服务器地址：
-
-```text
-http://<api-server-host>:8000/api/v1/agent-results/render
-http://<api-server-host>:8000/api/v1/accounts/{account_id}
-```
-
-当前这台机器的局域网访问地址：
+当前局域网访问地址：
 
 ```text
 http://192.168.10.132:8000
 ```
 
-给同一局域网内其他人使用：
+前端使用：
 
 ```text
-http://192.168.10.132:8000/api/v1/agent-results/render
-http://192.168.10.132:8000/api/v1/accounts/{account_id}
+POST http://192.168.10.132:8000/api/v1/chat/stream
+POST http://192.168.10.132:8000/api/v1/chat
+GET  http://192.168.10.132:8000/api/v1/accounts/{account_id}
 ```
 
 如果网络切换，`192.168.10.132` 可能变化，需要重新用 `ipconfig` 查看 WLAN 的 IPv4 地址。
-
-如需修改监听地址或端口：
-
-```bash
-AIGAMEMALL_API_HOST=0.0.0.0 AIGAMEMALL_API_PORT=8080 uv run --python 3.11 python -m app.server
-```
-
-本地开发需要热重载时再显式开启：
-
-```bash
-AIGAMEMALL_API_RELOAD=true uv run --python 3.11 python -m app.server
-```
 
 ## 测试
 
 ```bash
 uv run --python 3.11 pytest -q
 ```
-
-## 当前状态
-
-API 单测已覆盖这两个接口。
-
-当前前端还没有真正接入这些 API；完整链路需要前端调用 API 后才能完成联调。
