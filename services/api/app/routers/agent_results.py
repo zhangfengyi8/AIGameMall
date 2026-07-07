@@ -1,14 +1,9 @@
-from fastapi import APIRouter
-
 from app.schemas.agent_results import (
     AgentRecommendation,
     AgentResultRenderRequest,
     AgentResultRenderResponse,
     FrontendAccountCard,
 )
-
-
-router = APIRouter(prefix="/agent-results", tags=["agent-results"])
 
 
 SERVER_LABELS = {
@@ -19,7 +14,6 @@ SERVER_LABELS = {
 }
 
 
-@router.post("/render", response_model=AgentResultRenderResponse)
 def render_agent_result(
     request: AgentResultRenderRequest,
 ) -> AgentResultRenderResponse:
