@@ -17,6 +17,7 @@ def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
     heroes = slots["heroes"]
     skins = slots["skins"]
     rank = slots["rank"]
+    assets = slots["assets"]
     risk_pref = slots["risk_preference"]
 
     filters = {}
@@ -24,20 +25,44 @@ def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
     if sc:
         filters["server_code"] = sc
     if budget.get("max") is not None:
-        price_max = budget["max"] * 100
+        price_max = budget["max"]
         if budget.get("flexible"):
             price_max = int(price_max * 1.2)
         filters["price_max"] = price_max
     if budget.get("min") is not None:
-        filters["price_min"] = budget["min"] * 100
+        filters["price_min"] = budget["min"]
     if heroes["must_have"]:
         filters["must_have_heroes"] = heroes["must_have"]
     if skins["must_have"]:
         filters["must_have_skins"] = skins["must_have"]
     if rank.get("current"):
         filters["min_rank"] = rank["current"]
+    if rank.get("stars") is not None:
+        filters["min_rank_stars"] = rank["stars"]
+    if rank.get("peak_score") is not None:
+        filters["min_peak_score"] = rank["peak_score"]
+    if assets.get("noble_level") is not None:
+        filters["min_vip_level"] = assets["noble_level"]
+    if assets.get("skin_count") is not None:
+        filters["min_skin_count"] = assets["skin_count"]
+    if assets.get("hero_count") is not None:
+        filters["min_hero_count"] = assets["hero_count"]
+    if assets.get("collector_skin_count") is not None:
+        filters["min_collector_skin_count"] = assets["collector_skin_count"]
+    if assets.get("legend_skin_count") is not None:
+        filters["min_legend_skin_count"] = assets["legend_skin_count"]
+    if assets.get("limited_skin_count") is not None:
+        filters["min_limited_skin_count"] = assets["limited_skin_count"]
+    if assets.get("full_heroes"):
+        filters["require_full_heroes"] = True
     if risk_pref.get("requires_platform_guarantee"):
         filters["requires_platform_guarantee"] = True
+    if risk_pref.get("anti_addiction_status"):
+        filters["anti_addiction"] = risk_pref["anti_addiction_status"]
+    if risk_pref.get("secondary_real_name_status"):
+        filters["secondary_real_name"] = risk_pref["secondary_real_name_status"]
+    if risk_pref.get("change_bind_status"):
+        filters["change_bind"] = risk_pref["change_bind_status"]
 
     must_have = list(firm)
     nice_to_have = list(soft)
@@ -63,6 +88,8 @@ def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
     if "value_for_money" in goals:
         weights["budget_fit"] = 40
         weights["preferred_skin_coverage"] = 15
+    if "noble_level" in goals:
+        weights["asset_depth"] = 30
     if risk_pref.get("retrieval_risk_tolerance") == "low":
         weights["risk_safety"] = 40
 
@@ -99,6 +126,14 @@ def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
         never_relax.append("required_heroes")
     if skins["must_have"]:
         never_relax.append("required_skins")
+    if assets.get("noble_level") is not None:
+        never_relax.append("min_vip_level")
+    if assets.get("skin_count") is not None:
+        never_relax.append("min_skin_count")
+    if assets.get("hero_count") is not None or assets.get("full_heroes"):
+        never_relax.append("hero_count")
+    if rank.get("stars") is not None:
+        never_relax.append("min_rank_stars")
     if risk_pref.get("retrieval_risk_tolerance") == "low":
         never_relax.append("risk_level")
 
