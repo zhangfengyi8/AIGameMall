@@ -1,0 +1,516 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AIGameMall 流式导购接口测试</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --border: #e5e7eb;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --code: #111827;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .status {
+      min-width: 180px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status strong { color: var(--text); }
+    .status.running strong { color: var(--warn); }
+    .status.done strong { color: var(--ok); }
+    .status.error strong { color: var(--danger); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+
+    label {
+      display: block;
+      margin: 14px 0 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 11px 12px;
+      font: inherit;
+      outline: none;
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--primary);
+      color: #fff;
+    }
+
+    button:hover { background: var(--primary-dark); }
+    button.secondary { background: #e5e7eb; color: var(--text); }
+    button.secondary:hover { background: #d1d5db; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .quick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .quick button {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .reply {
+      min-height: 220px;
+      white-space: pre-wrap;
+      line-height: 1.75;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+
+    .event-log,
+    .json-box {
+      height: 260px;
+      overflow: auto;
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--code);
+      color: #d1d5db;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .cards {
+      display: grid;
+      gap: 12px;
+    }
+
+    .account-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .account-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-weight: 800;
+    }
+
+    .price { color: #ef4444; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .tag {
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f3f4f6;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 860px) {
+      .header { flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+      .status { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <h1>AIGameMall 流式导购接口测试</h1>
+        <p class="sub">测试后端 SSE 接口：文本使用 <code>message_delta</code> 流式输出，商品卡片通过 <code>recommendations</code> 事件返回。</p>
+      </div>
+      <div id="status" class="status">状态：<strong>空闲</strong></div>
+    </header>
+
+    <section class="grid">
+      <div class="card">
+        <h2>请求</h2>
+        <label for="apiUrl">API 地址</label>
+        <input id="apiUrl" value="http://127.0.0.1:8000/api/guide/chat/stream" />
+
+        <label for="sessionId">Session ID</label>
+        <input id="sessionId" />
+
+        <label for="message">用户消息</label>
+        <textarea id="message">帮我买个有孙尚香皮肤的账号，预算2000</textarea>
+
+        <div class="quick">
+          <button type="button" data-msg="你好">你好</button>
+          <button type="button" data-msg="帮我买个有孙尚香皮肤的账号，预算2000">孙尚香预算2000</button>
+          <button type="button" data-msg="安卓QQ，500以内，皮肤多点">安卓QQ 500皮肤多</button>
+          <button type="button" data-msg="安卓QQ">补充平台：安卓QQ</button>
+        </div>
+
+        <div class="actions">
+          <button id="sendBtn" type="button">发送流式请求</button>
+          <button id="stopBtn" type="button" class="secondary" disabled>停止</button>
+          <button id="clearBtn" type="button" class="secondary">清空输出</button>
+          <button id="resetHistoryBtn" type="button" class="secondary">重置本页 History</button>
+        </div>
+
+        <p class="hint">说明：浏览器 <code>EventSource</code> 不支持 POST，所以本页使用 <code>fetch()</code> 读取 SSE 流。</p>
+      </div>
+
+      <div class="card">
+        <h2>Agent 回复</h2>
+        <div id="reply" class="reply"></div>
+      </div>
+
+      <div class="card">
+        <h2>推荐商品卡片（recommendations，最多 3 个）</h2>
+        <div id="cards" class="cards"></div>
+      </div>
+
+      <div class="card">
+        <h2>事件日志</h2>
+        <div id="events" class="event-log"></div>
+      </div>
+
+      <div class="card">
+        <h2>Strategy / Done JSON</h2>
+        <div id="jsonBox" class="json-box"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const apiUrlEl = document.querySelector('#apiUrl')
+    const sessionIdEl = document.querySelector('#sessionId')
+    const messageEl = document.querySelector('#message')
+    const sendBtn = document.querySelector('#sendBtn')
+    const stopBtn = document.querySelector('#stopBtn')
+    const clearBtn = document.querySelector('#clearBtn')
+    const resetHistoryBtn = document.querySelector('#resetHistoryBtn')
+    const statusEl = document.querySelector('#status')
+    const replyEl = document.querySelector('#reply')
+    const cardsEl = document.querySelector('#cards')
+    const eventsEl = document.querySelector('#events')
+    const jsonBoxEl = document.querySelector('#jsonBox')
+
+    let controller = null
+    let history = null
+
+    sessionIdEl.value = `web-test-${Date.now()}`
+
+    document.querySelectorAll('.quick button').forEach((button) => {
+      button.addEventListener('click', () => {
+        messageEl.value = button.dataset.msg
+      })
+    })
+
+    sendBtn.addEventListener('click', sendStream)
+    stopBtn.addEventListener('click', () => controller?.abort())
+    clearBtn.addEventListener('click', clearOutput)
+    resetHistoryBtn.addEventListener('click', () => {
+      history = null
+      sessionIdEl.value = `web-test-${Date.now()}`
+      logEvent('local', { message: 'history reset' })
+    })
+
+    async function sendStream() {
+      const apiUrl = apiUrlEl.value.trim()
+      const message = messageEl.value.trim()
+      const sessionId = sessionIdEl.value.trim() || 'default'
+
+      if (!apiUrl || !message) {
+        alert('请填写 API 地址和用户消息')
+        return
+      }
+
+      clearOutput()
+      setStatus('running', '请求中')
+      sendBtn.disabled = true
+      stopBtn.disabled = false
+      controller = new AbortController()
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message,
+            history,
+          }),
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`HTTP ${response.status}: ${errorText}`)
+        }
+
+        await readSseStream(response.body)
+        setStatus('done', '完成')
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          setStatus('error', '已停止')
+          logEvent('abort', { message: 'request aborted' })
+        } else {
+          setStatus('error', '错误')
+          logEvent('client_error', { message: error.message })
+          console.error(error)
+        }
+      } finally {
+        controller = null
+        sendBtn.disabled = false
+        stopBtn.disabled = true
+      }
+    }
+
+    async function readSseStream(stream) {
+      const reader = stream.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() || ''
+
+        for (const part of parts) {
+          handleSseBlock(part)
+        }
+      }
+
+      if (buffer.trim()) {
+        handleSseBlock(buffer)
+      }
+    }
+
+    function handleSseBlock(block) {
+      const lines = block.split(/\r?\n/)
+      let eventName = 'message'
+      const dataLines = []
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trimStart())
+        }
+      }
+
+      const rawData = dataLines.join('\n')
+      let data = rawData
+      try {
+        data = JSON.parse(rawData)
+      } catch (_) {}
+
+      logEvent(eventName, data)
+
+      if (eventName === 'message_delta') {
+        replyEl.textContent += data.text || ''
+      } else if (eventName === 'strategy') {
+        appendJson('strategy', data)
+      } else if (eventName === 'recommendations') {
+        renderCards(Array.isArray(data) ? data : [])
+        appendJson('recommendations', data)
+      } else if (eventName === 'done') {
+        history = data.history || history
+        appendJson('done', data)
+      } else if (eventName === 'error') {
+        setStatus('error', '服务端错误')
+        appendJson('error', data)
+      }
+    }
+
+    function renderCards(cards) {
+      cardsEl.innerHTML = ''
+
+      if (!cards.length) {
+        cardsEl.innerHTML = '<p class="hint">暂无商品卡片。</p>'
+        return
+      }
+
+      cards.slice(0, 3).forEach((card, index) => {
+        const node = document.createElement('div')
+        node.className = 'account-card'
+        const heroes = (card.heroes || []).slice(0, 8).map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join('')
+        const skins = (card.skins || []).slice(0, 8).map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join('')
+        node.innerHTML = `
+          <div class="account-title">
+            <span>#${index + 1} ${escapeHtml(card.account_id || '-')}</span>
+            <span class="price">¥${escapeHtml(String(card.price ?? '-'))}</span>
+          </div>
+          <div class="meta">
+            <div>区服：${escapeHtml(card.server_code || '-')}</div>
+            <div>段位：${escapeHtml(card.rank_name || '-')} ${escapeHtml(String(card.rank_stars ?? 0))}星</div>
+            <div>VIP：${escapeHtml(String(card.vip_level ?? '-'))}</div>
+            <div>性价比：${escapeHtml(String(card.value_score ?? '-'))}</div>
+            <div>英雄数：${escapeHtml(String(card.hero_count ?? 0))}</div>
+            <div>皮肤数：${escapeHtml(String(card.skin_count ?? 0))}</div>
+            <div>实名：${escapeHtml(card.secondary_real_name || '-')}</div>
+            <div>换绑：${escapeHtml(card.change_bind || '-')}</div>
+          </div>
+          <div class="tags">${heroes || '<span class="tag">无英雄数据</span>'}</div>
+          <div class="tags">${skins || '<span class="tag">无皮肤数据</span>'}</div>
+        `
+        cardsEl.appendChild(node)
+      })
+    }
+
+    function logEvent(eventName, data) {
+      eventsEl.textContent += `[${new Date().toLocaleTimeString()}] ${eventName}\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n\n`
+      eventsEl.scrollTop = eventsEl.scrollHeight
+    }
+
+    function appendJson(name, data) {
+      jsonBoxEl.textContent += `## ${name}\n${JSON.stringify(data, null, 2)}\n\n`
+      jsonBoxEl.scrollTop = jsonBoxEl.scrollHeight
+    }
+
+    function clearOutput() {
+      replyEl.textContent = ''
+      cardsEl.innerHTML = ''
+      eventsEl.textContent = ''
+      jsonBoxEl.textContent = ''
+    }
+
+    function setStatus(type, text) {
+      statusEl.className = `status ${type}`
+      statusEl.innerHTML = `状态：<strong>${text}</strong>`
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;')
+    }
+  </script>
+</body>
+</html>
