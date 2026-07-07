@@ -254,7 +254,7 @@
       <div class="card">
         <h2>请求</h2>
         <label for="apiUrl">API 地址</label>
-        <input id="apiUrl" value="http://127.0.0.1:8000/api/guide/chat/stream" />
+        <input id="apiUrl" value="http://127.0.0.1:8000/api/v1/chat/stream" />
 
         <label for="sessionId">Session ID</label>
         <input id="sessionId" />
@@ -316,7 +316,7 @@
     const jsonBoxEl = document.querySelector('#jsonBox')
 
     let controller = null
-    let history = null
+    let history = []
 
     sessionIdEl.value = `web-test-${Date.now()}`
 
@@ -330,7 +330,7 @@
     stopBtn.addEventListener('click', () => controller?.abort())
     clearBtn.addEventListener('click', clearOutput)
     resetHistoryBtn.addEventListener('click', () => {
-      history = null
+      history = []
       sessionIdEl.value = `web-test-${Date.now()}`
       logEvent('local', { message: 'history reset' })
     })
@@ -358,7 +358,7 @@
           body: JSON.stringify({
             session_id: sessionId,
             message,
-            history,
+            history: history || [],
           }),
           signal: controller.signal,
         })
