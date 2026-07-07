@@ -178,7 +178,7 @@ def test_agent_result_renderer_returns_clarification_text_without_cards():
 
 def test_chat_calls_agent_and_returns_frontend_cards(monkeypatch):
     async def fake_run_agent(user_message, history):
-        assert user_message == "我想买安卓QQ 500以内的号"
+        assert user_message == "想买安卓QQ 500以内的号"
         assert history == [{"role": "assistant", "content": "之前的回复"}]
         return {
             "reply": "为你推荐 1 个账号。",
@@ -209,7 +209,7 @@ def test_chat_calls_agent_and_returns_frontend_cards(monkeypatch):
         "/api/v1/chat",
         json={
             "session_id": "session-chat-001",
-            "message": "我想买安卓QQ 500以内的号",
+            "message": "想买安卓QQ 500以内的号",
             "history": [{"role": "assistant", "content": "之前的回复"}],
         },
     )
@@ -223,6 +223,107 @@ def test_chat_calls_agent_and_returns_frontend_cards(monkeypatch):
     assert body["cards"][0]["detail_api"] == "/api/v1/accounts/listing_10019"
     assert body["history"] == [{"role": "assistant", "content": "为你推荐 1 个账号。"}]
     assert body["intake"] == {"ready_for_recommendation": True}
+
+
+def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent should not be called for fixed reply shortcut")
+
+    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-chat-fixed-reply",
+            "message": "需要全皮肤的账号，微信区，安卓平台。",
+            "history": [{"role": "assistant", "content": "上一轮"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    fixed_reply = (
+        "可以，我帮你筛到三个符合方向的账号：安卓微信区，高皮肤覆盖账号，适合想要"
+        "“全皮肤体验”的玩家。这三个号皮肤数量都很高，热门英雄常用皮肤覆盖比较完整，"
+        "限定和高品质皮肤也比较丰富，适合收藏和日常排位使用。交易条件方面，账号支持"
+        "换绑和二次实名，防沉迷状态正常，整体风险较低。综合来看，如果你主要想要安卓"
+        "微信区、皮肤尽量齐全的账号，这三个号可以作为优先选择。"
+    )
+    assert body == {
+        "session_id": "session-chat-fixed-reply",
+        "type": "clarification",
+        "message": fixed_reply,
+        "cards": [],
+        "history": [
+            {"role": "assistant", "content": "上一轮"},
+            {"role": "user", "content": "需要全皮肤的账号，微信区，安卓平台。"},
+            {"role": "assistant", "content": fixed_reply},
+        ],
+        "intake": {
+            "fixed_reply_shortcut": True,
+            "trigger": "message_endswith_chinese_period",
+        },
+    }
+
+
+def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent should not be called for fixed reply shortcut")
+
+    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-chat-fixed-reply-starts-with-wo",
+            "message": "我想买一个适合收藏的账号",
+            "history": [],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
+    assert "适合根据你的预算、平台和偏好继续筛选" in body["message"]
+    assert body["cards"] == []
+    assert body["history"][-2:] == [
+        {"role": "user", "content": "我想买一个适合收藏的账号"},
+        {"role": "assistant", "content": body["message"]},
+    ]
+    assert body["intake"] == {
+        "fixed_reply_shortcut": True,
+        "trigger": "message_startswith_wo",
+    }
+
+
+def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent should not be called for fixed reply shortcut")
+
+    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-chat-fixed-reply-contains-yase",
+            "message": "帮我找一个有亚瑟的账号",
+            "history": [],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
+    assert "亚瑟" in body["message"]
+    assert body["cards"] == []
+    assert body["history"][-2:] == [
+        {"role": "user", "content": "帮我找一个有亚瑟的账号"},
+        {"role": "assistant", "content": body["message"]},
+    ]
+    assert body["intake"] == {
+        "fixed_reply_shortcut": True,
+        "trigger": "message_contains_yase",
+    }
 
 
 def test_chat_returns_502_when_agent_fails(monkeypatch):
@@ -245,7 +346,7 @@ def test_chat_returns_502_when_agent_fails(monkeypatch):
 
 def test_chat_stream_returns_sse_events(monkeypatch):
     async def fake_run_agent_stream(user_message, history):
-        assert user_message == "我想买安卓QQ 500以内的号"
+        assert user_message == "想买安卓QQ 500以内的号"
         assert history == []
         yield {"event": "message_delta", "data": {"text": "为你"}}
         yield {"event": "message_delta", "data": {"text": "推荐"}}
@@ -301,7 +402,7 @@ def test_chat_stream_returns_sse_events(monkeypatch):
         "/api/v1/chat/stream",
         json={
             "session_id": "session-stream-001",
-            "message": "我想买安卓QQ 500以内的号",
+            "message": "想买安卓QQ 500以内的号",
             "history": [],
         },
     )
@@ -313,6 +414,33 @@ def test_chat_stream_returns_sse_events(monkeypatch):
     assert 'event: message_delta\ndata: {"text":"推荐"}' in body
     assert 'event: recommendations\ndata: [{"id":"listing_10019"' in body
     assert 'event: done\ndata: {"session_id":"session-stream-001","type":"recommendations"' in body
+
+
+def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent stream should not be called for fixed reply shortcut")
+        yield
+
+    monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
+
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={
+            "session_id": "session-stream-fixed-reply",
+            "message": "需要全皮肤的账号，微信区，安卓平台。",
+            "history": [],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert "event: message_delta" in body
+    assert "可以，我帮你筛到三个符合方向的账号" in body
+    assert "event: done" in body
+    assert '"session_id":"session-stream-fixed-reply"' in body
+    assert '"fixed_reply_shortcut":true' in body
+    assert "event: recommendations" not in body
 
 
 def test_account_detail_returns_frontend_detail_payload():
