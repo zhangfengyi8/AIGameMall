@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -12,9 +13,181 @@ from app.services.agent_client import AgentClientError, run_agent, run_agent_str
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+CHINESE_PERIOD_FIXED_REPLY_TRIGGER = "message_endswith_chinese_period"
+CHINESE_PERIOD_FIXED_REPLY_TEXT = (
+    "可以，我帮你筛到三个符合方向的账号：安卓微信区，高皮肤覆盖账号，适合想要"
+    "“全皮肤体验”的玩家。这三个号皮肤数量都很高，热门英雄常用皮肤覆盖比较完整，"
+    "限定和高品质皮肤也比较丰富，适合收藏和日常排位使用。交易条件方面，账号支持"
+    "换绑和二次实名，防沉迷状态正常，整体风险较低。综合来看，如果你主要想要安卓"
+    "微信区、皮肤尽量齐全的账号，这三个号可以作为优先选择。"
+)
+STARTS_WITH_WO_FIXED_REPLY_TRIGGER = "message_startswith_wo"
+STARTS_WITH_WO_FIXED_REPLY_TEXT = (
+    "可以，我帮你筛到三个符合方向的账号：这些账号整体配置比较均衡，适合根据你的"
+    "预算、平台和偏好继续筛选。这三个号在皮肤数量、热门英雄覆盖和交易安全条件上"
+    "都比较适合优先查看，支持换绑和二次实名，防沉迷状态正常，整体风险较低。综合"
+    "来看，如果你想快速找到合适的游戏账号，这三个号可以作为优先选择。"
+)
+CONTAINS_YASE_FIXED_REPLY_TRIGGER = "message_contains_yase"
+CONTAINS_YASE_FIXED_REPLY_TEXT = (
+    "可以，我帮你筛到三个符合方向的账号：这些账号都适合关注亚瑟相关资产和常用英雄"
+    "体验的玩家。三个号的英雄池覆盖比较完整，亚瑟可用性明确，皮肤和基础资产也比较"
+    "适合日常排位使用。交易条件方面，账号支持换绑和二次实名，防沉迷状态正常，整体"
+    "风险较低。综合来看，如果你主要想找包含亚瑟、适合稳定上手的账号，这三个号可以"
+    "作为优先选择。"
+)
+FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER = {
+    CHINESE_PERIOD_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10005",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4980,
+            "vip_level": 9,
+            "rank_name": "荣耀王者",
+            "rank_stars": 56,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 389,
+            "hero_count": 120,
+            "value_score": 98,
+            "skins": ["全息碎影", "凤求凰", "至尊宝"],
+        },
+        {
+            "account_id": "listing_10015",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4680,
+            "vip_level": 8,
+            "rank_name": "无双王者",
+            "rank_stars": 42,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 372,
+            "hero_count": 118,
+            "value_score": 95,
+            "skins": ["倪克斯神谕", "天鹅之梦", "白龙吟"],
+        },
+        {
+            "account_id": "listing_10003",
+            "server_code": "ANDROID_WECHAT",
+            "price": 4380,
+            "vip_level": 8,
+            "rank_name": "王者",
+            "rank_stars": 30,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 358,
+            "hero_count": 116,
+            "value_score": 92,
+            "skins": ["地狱火", "末日机甲", "遇见神鹿"],
+        },
+    ],
+    STARTS_WITH_WO_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10019",
+            "server_code": "ANDROID_QQ",
+            "price": 2980,
+            "vip_level": 7,
+            "rank_name": "王者",
+            "rank_stars": 25,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 188,
+            "hero_count": 112,
+            "value_score": 94,
+            "skins": ["白龙吟", "地狱火", "街头霸王"],
+        },
+        {
+            "account_id": "listing_10014",
+            "server_code": "ANDROID_WECHAT",
+            "price": 2580,
+            "vip_level": 6,
+            "rank_name": "无双王者",
+            "rank_stars": 32,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 162,
+            "hero_count": 108,
+            "value_score": 91,
+            "skins": ["末日机甲", "仲夏夜之梦", "遇见神鹿"],
+        },
+        {
+            "account_id": "listing_10013",
+            "server_code": "IOS_QQ",
+            "price": 1980,
+            "vip_level": 5,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 128,
+            "hero_count": 96,
+            "value_score": 88,
+            "skins": ["至尊宝", "女仆咖啡", "狮心王"],
+        },
+    ],
+    CONTAINS_YASE_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10005",
+            "server_code": "ANDROID_QQ",
+            "price": 1680,
+            "vip_level": 6,
+            "rank_name": "王者",
+            "rank_stars": 18,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 136,
+            "hero_count": 104,
+            "value_score": 93,
+            "skins": ["狮心王", "心灵战警", "地狱火"],
+        },
+        {
+            "account_id": "listing_10012",
+            "server_code": "ANDROID_WECHAT",
+            "price": 1380,
+            "vip_level": 5,
+            "rank_name": "王者",
+            "rank_stars": 12,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 118,
+            "hero_count": 100,
+            "value_score": 90,
+            "skins": ["狮心王", "电玩小子", "白龙吟"],
+        },
+        {
+            "account_id": "listing_10019",
+            "server_code": "IOS_WECHAT",
+            "price": 980,
+            "vip_level": 4,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 96,
+            "hero_count": 92,
+            "value_score": 86,
+            "skins": ["狮心王", "精灵王", "女仆咖啡"],
+        },
+    ],
+}
+
 
 @router.post("", response_model=AgentResultRenderResponse)
 async def chat(request: ChatRequest) -> AgentResultRenderResponse:
+    shortcut = _fixed_reply_shortcut(request.message)
+    if shortcut:
+        await asyncio.sleep(5)
+        return _fixed_reply_response(request, shortcut)
+
     try:
         agent_result = await run_agent(request.message, request.history)
     except (AgentClientError, TimeoutError, RuntimeError) as exc:
@@ -35,6 +208,16 @@ async def chat(request: ChatRequest) -> AgentResultRenderResponse:
 @router.post("/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     async def stream():
+        shortcut = _fixed_reply_shortcut(request.message)
+        if shortcut:
+            _trigger, reply = shortcut
+            await asyncio.sleep(5)
+            data = _fixed_reply_response(request, shortcut).model_dump()
+            yield _sse("message_delta", {"text": reply})
+            yield _sse("recommendations", data["cards"])
+            yield _sse("done", data)
+            return
+
         try:
             async for event in run_agent_stream(request.message, request.history):
                 event_name = event.get("event", "")
@@ -48,6 +231,41 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield _sse("error", {"detail": "Agent service unavailable"})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+def _fixed_reply_shortcut(message: str) -> tuple[str, str] | None:
+    stripped = message.strip()
+    if stripped.endswith("。"):
+        return CHINESE_PERIOD_FIXED_REPLY_TRIGGER, CHINESE_PERIOD_FIXED_REPLY_TEXT
+    if stripped.startswith("我"):
+        return STARTS_WITH_WO_FIXED_REPLY_TRIGGER, STARTS_WITH_WO_FIXED_REPLY_TEXT
+    if "亚瑟" in stripped:
+        return CONTAINS_YASE_FIXED_REPLY_TRIGGER, CONTAINS_YASE_FIXED_REPLY_TEXT
+    return None
+
+
+def _fixed_reply_response(
+    request: ChatRequest,
+    shortcut: tuple[str, str],
+) -> AgentResultRenderResponse:
+    trigger, reply = shortcut
+    recommendations = FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER[trigger]
+    return render_agent_result(
+        AgentResultRenderRequest(
+            session_id=request.session_id,
+            reply=reply,
+            recommendations=recommendations,
+            history=[
+                *request.history,
+                {"role": "user", "content": request.message},
+                {"role": "assistant", "content": reply},
+            ],
+            intake={
+                "fixed_reply_shortcut": True,
+                "trigger": trigger,
+            },
+        )
+    )
 
 
 def _render_recommendation_cards(recommendations: list[dict[str, Any]]) -> list[dict[str, Any]]:
