@@ -87,91 +87,21 @@ def _repo_root() -> Path:
 
 _AGENT_BRIDGE_SCRIPT = textwrap.dedent(
     r"""
-    import json
-    import sys
-    import types
-
-    agents_module = types.ModuleType("agents")
-
-    def function_tool(fn=None, *args, **kwargs):
-        if callable(fn):
-            return fn
-        return lambda wrapped: wrapped
-
-    agents_module.function_tool = function_tool
-    sys.modules.setdefault("agents", agents_module)
-
-    from app.schemas.detail import format_card
-    from app.skills.requirement_intake import intake, search_params_from_intake
-    from app.tools.search import _do_search
-
-    payload = json.load(sys.stdin)
-    message = payload["message"]
-    history = payload.get("history") or []
-    intake_result = intake(message)
-
-    if not intake_result.get("ready_for_recommendation"):
-        question = intake_result.get("clarifying_question") or "预算大概多少？最高能接受到多少？"
-        reply = f"好的，我先了解下你的需求。{question}"
-        result = {
-            "reply": reply,
-            "recommendations": [],
-            "history": history + [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": reply},
-            ],
-            "intake": intake_result,
-        }
-    else:
-        search_params = search_params_from_intake(intake_result)
-        accounts = _do_search(**search_params)
-        recommendations = [format_card(account) for account in accounts[:10]]
-        if recommendations:
-            reply = f"根据你的需求，为你推荐 {min(len(recommendations), 3)} 个账号。"
-        else:
-            reply = "抱歉，暂时没有找到完全符合你要求的账号。你可以试试放宽预算或者调整一下条件。"
-        result = {
-            "reply": reply,
-            "recommendations": recommendations,
-            "history": history + [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": reply},
-            ],
-            "intake": intake_result,
-        }
-
-    print(json.dumps(result, ensure_ascii=False))
-    """
-)
-
-
-_AGENT_STREAM_BRIDGE_SCRIPT = textwrap.dedent(
-    r"""
     import asyncio
     import json
     import os
     import sys
-    import types
-
-    def emit(event, data):
-        print(json.dumps({"event": event, "data": data}, ensure_ascii=False), flush=True)
 
     payload = json.load(sys.stdin)
     message = payload["message"]
     history = payload.get("history") or []
 
-    async def try_real_stream():
-        if not os.environ.get("OPENAI_API_KEY"):
-            return False
-        try:
-            from app.agent import run_agent_stream
-        except Exception:
-            return False
-        async for event in run_agent_stream(message, history):
-            emit(event["event"], event["data"])
-        return True
+    async def call_real_agent():
+        from app.agent import run_agent
+        return await run_agent(message, history)
 
-    async def fallback_stream():
+    def call_agent_fallback():
+        import types
         agents_module = types.ModuleType("agents")
 
         def function_tool(fn=None, *args, **kwargs):
@@ -182,64 +112,71 @@ _AGENT_STREAM_BRIDGE_SCRIPT = textwrap.dedent(
         agents_module.function_tool = function_tool
         sys.modules.setdefault("agents", agents_module)
 
-        from app.schemas.detail import format_card
-        from app.skills.requirement_intake import intake, search_params_from_intake
-        from app.tools.search import _do_search
+        from app.fallback.rule_engine import run_fallback
+        result = run_fallback(message)
+        result.setdefault("recommendations", [])
+        result.setdefault("intake", {})
+        return result
 
-        intake_result = intake(message)
+    try:
+        result = asyncio.run(call_real_agent())
+    except Exception:
+        result = call_agent_fallback()
 
-        if not intake_result.get("ready_for_recommendation"):
-            question = intake_result.get("clarifying_question") or "预算大概多少？最高能接受到多少？"
-            reply = f"好的，我先了解下你的需求。{question}"
-            for char in reply:
-                emit("message_delta", {"text": char})
-            emit(
-                "done",
-                {
-                    "reply": reply,
-                    "recommendations": [],
-                    "history": history + [
-                        {"role": "user", "content": message},
-                        {"role": "assistant", "content": reply},
-                    ],
-                    "intake": intake_result,
-                },
-            )
-            return
+    print(json.dumps(result, ensure_ascii=False))
+    """
+)
 
-        search_params = search_params_from_intake(intake_result)
-        accounts = _do_search(**search_params)
-        recommendations = [format_card(account) for account in accounts[:10]]
-        emit(
-            "strategy",
-            {
-                "filters": search_params,
-                "account_count": len(accounts),
-                "account_ids": [account.get("listingId", "") for account in accounts[:10]],
-            },
-        )
-        if recommendations:
-            reply = f"根据你的需求，为你推荐 {min(len(recommendations), 3)} 个账号。"
-        else:
-            reply = "抱歉，暂时没有找到完全符合你要求的账号。你可以试试放宽预算或者调整一下条件。"
+
+_AGENT_STREAM_BRIDGE_SCRIPT = textwrap.dedent(
+    r"""
+    import asyncio
+    import json
+    import sys
+
+    def emit(event, data):
+        print(json.dumps({"event": event, "data": data}, ensure_ascii=False), flush=True)
+
+    payload = json.load(sys.stdin)
+    message = payload["message"]
+    history = payload.get("history") or []
+
+    async def real_stream():
+        from app.agent import run_agent_stream
+        async for event in run_agent_stream(message, history):
+            emit(event["event"], event["data"])
+
+    async def fallback_stream():
+        import types
+        agents_module = types.ModuleType("agents")
+
+        def function_tool(fn=None, *args, **kwargs):
+            if callable(fn):
+                return fn
+            return lambda wrapped: wrapped
+
+        agents_module.function_tool = function_tool
+        sys.modules.setdefault("agents", agents_module)
+
+        from app.fallback.rule_engine import run_fallback
+        result = run_fallback(message)
+        reply = result.get("reply", "")
         for char in reply:
             emit("message_delta", {"text": char})
-        emit("recommendations", recommendations)
         emit(
             "done",
             {
                 "reply": reply,
-                "recommendations": recommendations,
-                "history": history + [
-                    {"role": "user", "content": message},
-                    {"role": "assistant", "content": reply},
-                ],
-                "intake": intake_result,
+                "recommendations": result.get("recommendations", []),
+                "history": result.get("history", history),
+                "intake": result.get("intake", {}),
             },
         )
 
     async def main():
-        if not await try_real_stream():
+        try:
+            await real_stream()
+        except Exception:
             await fallback_stream()
 
     asyncio.run(main())

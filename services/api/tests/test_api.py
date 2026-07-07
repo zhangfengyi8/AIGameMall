@@ -1,5 +1,11 @@
+import asyncio
+import shutil
+import uuid
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
+from app.services import agent_client
 from app.main import app
 from app.routers.agent_results import render_agent_result
 from app.schemas.agent_results import AgentResultRenderRequest
@@ -7,6 +13,89 @@ from app.server import build_server_config
 
 
 client = TestClient(app)
+
+
+def make_test_repo_root():
+    root = Path.cwd() / ".test-tmp" / uuid.uuid4().hex
+    root.mkdir(parents=True)
+    return root
+
+
+def test_agent_client_calls_agent_module_run_agent(monkeypatch):
+    tmp_path = make_test_repo_root()
+    agent_dir = tmp_path / "services" / "agent-orchestrator" / "app"
+    try:
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "__init__.py").write_text("", encoding="utf-8")
+        (agent_dir / "agent.py").write_text(
+            """
+async def run_agent(user_message, history):
+    return {
+        "reply": f"real:{user_message}",
+        "recommendations": [],
+        "history": history + [{"role": "assistant", "content": "real"}],
+        "intake": {"source": "real-agent"},
+    }
+""",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(agent_client, "_repo_root", lambda: tmp_path)
+
+        result = asyncio.run(agent_client.run_agent("hello", [{"role": "user", "content": "old"}]))
+
+        assert result["reply"] == "real:hello"
+        assert result["intake"] == {"source": "real-agent"}
+        assert result["history"] == [
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "real"},
+        ]
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
+def test_agent_client_calls_agent_module_run_agent_stream(monkeypatch):
+    tmp_path = make_test_repo_root()
+    agent_dir = tmp_path / "services" / "agent-orchestrator" / "app"
+    try:
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "__init__.py").write_text("", encoding="utf-8")
+        (agent_dir / "agent.py").write_text(
+            """
+async def run_agent_stream(user_message, history):
+    yield {"event": "message_delta", "data": {"text": f"real:{user_message}"}}
+    yield {
+        "event": "done",
+        "data": {
+            "reply": "done",
+            "recommendations": [],
+            "history": history,
+            "intake": {"source": "real-agent-stream"},
+        },
+    }
+""",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(agent_client, "_repo_root", lambda: tmp_path)
+
+        async def collect():
+            return [event async for event in agent_client.run_agent_stream("hello", [])]
+
+        events = asyncio.run(collect())
+
+        assert events == [
+            {"event": "message_delta", "data": {"text": "real:hello"}},
+            {
+                "event": "done",
+                "data": {
+                    "reply": "done",
+                    "recommendations": [],
+                    "history": [],
+                    "intake": {"source": "real-agent-stream"},
+                },
+            },
+        ]
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
 
 
 def test_agent_result_renderer_returns_frontend_message_and_account_cards():
