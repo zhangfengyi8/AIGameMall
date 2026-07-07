@@ -304,7 +304,7 @@ input { border: none; outline: none; font-family: inherit; }
 .footer a:hover { color: var(--brand-green); }
 
 /* ===== AI Floating Ball ===== */
-.ai-ball { position: fixed; bottom: 80px; right: 32px; z-index: 9999; }
+.ai-ball { position: fixed; bottom: 80px; right: 32px; z-index: 997; }
 .ai-ball-btn {
   width: 60px; height: 60px; border-radius: 50%;
   background: linear-gradient(135deg, #20EB82, #00B570);
