@@ -9,4 +9,4 @@ class RecommendResult(BaseModel):
     reply: str
     """给用户的自然语言回复"""
     recommended_ids: list[str]
-    """推荐的账号 ID 列表，按推荐优先级排序，最多 10 个"""
+    """推荐的账号 ID 列表，按推荐优先级排序，最多 3 个"""

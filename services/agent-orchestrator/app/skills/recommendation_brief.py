@@ -4,7 +4,7 @@ account-recommendation-brief skill 的 Python 实现。
 """
 
 
-def build_query(intake_result: dict, candidate_count: int = 10) -> dict:
+def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
     """根据 intake 结果构建搜索查询和推荐策略。
 
     返回值符合 account-recommendation-brief SKILL.md 定义的 Output Contract。
@@ -113,7 +113,7 @@ def build_query(intake_result: dict, candidate_count: int = 10) -> dict:
             "tie_breakers": tie_breakers,
         },
         "recommendation_policy": {
-            "max_items": min(candidate_count, 10),
+            "max_items": min(candidate_count, 3),
             "explain_fields": explain_fields,
             "risk_checks": risk_checks,
             "fallbacks": fallbacks,

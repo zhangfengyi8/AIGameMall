@@ -42,6 +42,7 @@ http_client = AsyncOpenAI(
 )
 
 _model = OpenAIResponsesModel(model=MODEL, openai_client=http_client)
+MAX_RECOMMENDATION_CARDS = 3
 
 guide_agent = Agent(
     name="游戏账号导购助手",
@@ -98,7 +99,7 @@ def _format_recommendation_cards(accounts: list[dict]) -> list[dict]:
         if aid and aid not in seen:
             seen.add(aid)
             cards.append(format_card(acc))
-            if len(cards) >= 10:
+            if len(cards) >= MAX_RECOMMENDATION_CARDS:
                 break
     return cards
 
