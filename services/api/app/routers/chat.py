@@ -289,7 +289,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
 
 def _fixed_reply_shortcut(message: str) -> tuple[str, str] | None:
-    if os.getenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "").lower() not in {"1", "true", "yes"}:
+    if os.getenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true").lower() not in {"1", "true", "yes"}:
         return None
 
     stripped = message.strip()
