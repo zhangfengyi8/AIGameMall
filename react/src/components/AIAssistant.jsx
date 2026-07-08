@@ -4,17 +4,21 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://192.168.10.13
 
 function parseSseChunk(buffer) {
   const parts = buffer.split('\n\n')
-  return {
-    events: parts.slice(0, -1).map(part => {
-      const eventLine = part.split('\n').find(line => line.startsWith('event: '))
-      const dataLine = part.split('\n').find(line => line.startsWith('data: '))
-      return {
-        event: eventLine ? eventLine.slice(7) : 'message',
-        data: dataLine ? JSON.parse(dataLine.slice(6)) : null,
-      }
-    }),
-    rest: parts[parts.length - 1],
+  const events = []
+  for (const part of parts.slice(0, -1)) {
+    if (!part.trim()) continue
+    let evName = 'message', dataStr = ''
+    for (const line of part.split('\n')) {
+      if (line.startsWith('event: ')) evName = line.slice(7).trim()
+      else if (line.startsWith('data: ')) dataStr = line.slice(6)
+    }
+    try {
+      events.push({ event: evName, data: JSON.parse(dataStr) })
+    } catch {
+      // skip malformed SSE frames
+    }
   }
+  return { events, rest: parts[parts.length - 1] }
 }
 
 export default function AIAssistant({ onCardClick }) {
@@ -22,14 +26,18 @@ export default function AIAssistant({ onCardClick }) {
   const [showBadge, setShowBadge] = useState(true)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState([{ id: 0, type: 'welcome' }])
+  const [isStreaming, setIsStreaming] = useState(false)
   const historyRef = useRef([])
   const sessionIdRef = useRef(`web-${Date.now()}`)
   const bodyRef = useRef(null)
   const inputRef = useRef(null)
+  const abortRef = useRef(null)
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight
   }, [messages])
+
+  useEffect(() => () => { abortRef.current?.abort() }, [])
 
   function toggle() {
     setIsOpen(o => !o)
@@ -41,7 +49,7 @@ export default function AIAssistant({ onCardClick }) {
 
   async function sendMsg(text) {
     const msg = (text !== undefined ? text : input).trim()
-    if (!msg) return
+    if (!msg || isStreaming) return
     setInput('')
 
     const userId = Date.now()
@@ -52,20 +60,28 @@ export default function AIAssistant({ onCardClick }) {
       { id: thinkId, type: 'thinking' },
     ])
 
+    setIsStreaming(true)
     try {
       await requestAgentStream(msg, thinkId)
-    } catch (error) {
-      setMessages(prev => prev.map(m =>
-        m.id === thinkId
-          ? { id: thinkId, type: 'error', text: '暂时无法连接导购服务，请稍后再试。' }
-          : m
-      ))
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setMessages(prev => prev.map(m =>
+          m.id === thinkId
+            ? { id: thinkId, type: 'error', text: '暂时无法连接导购服务，请稍后再试。' }
+            : m
+        ))
+      }
+    } finally {
+      setIsStreaming(false)
+      abortRef.current = null
     }
   }
 
   function quickSearch(text) { sendMsg(text) }
 
   async function requestAgentStream(message, messageId) {
+    abortRef.current = new AbortController()
+
     const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,69 +90,71 @@ export default function AIAssistant({ onCardClick }) {
         message,
         history: historyRef.current,
       }),
+      signal: abortRef.current.signal,
     })
-    if (!response.ok || !response.body) throw new Error('chat stream failed')
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.detail || response.statusText)
+    }
+    if (!response.body) throw new Error('no response body')
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
-
-    setMessages(prev => prev.map(m =>
-      m.id === messageId
-        ? { id: messageId, type: 'result', responseType: 'clarification', message: '', cards: [] }
-        : m
-    ))
+    let firstDelta = true
 
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const parsed = parseSseChunk(buffer)
-      buffer = parsed.rest
-      parsed.events.forEach(evt => applyAgentEvent(messageId, evt))
-    }
-  }
+      const { events, rest } = parseSseChunk(buffer)
+      buffer = rest
 
-  function applyAgentEvent(messageId, evt) {
-    if (evt.event === 'message_delta') {
-      setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, message: `${m.message || ''}${evt.data?.text || ''}` }
-          : m
-      ))
-      return
-    }
-
-    if (evt.event === 'recommendations') {
-      setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, responseType: 'recommendations', cards: evt.data || [] }
-          : m
-      ))
-      return
-    }
-
-    if (evt.event === 'done') {
-      historyRef.current = evt.data?.history || historyRef.current
-      setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? {
+      for (const { event: evName, data } of events) {
+        if (evName === 'message_delta') {
+          const text = data?.text || ''
+          if (firstDelta) {
+            // Replace thinking indicator with first character
+            setMessages(prev => prev.map(m =>
+              m.id === messageId
+                ? { id: messageId, type: 'result', responseType: 'clarification', message: text, cards: [] }
+                : m
+            ))
+            firstDelta = false
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === messageId ? { ...m, message: (m.message || '') + text } : m
+            ))
+          }
+        } else if (evName === 'recommendations') {
+          setMessages(prev => prev.map(m =>
+            m.id === messageId
+              ? { ...m, type: 'result', responseType: 'recommendations', cards: data || [] }
+              : m
+          ))
+        } else if (evName === 'done') {
+          historyRef.current = data?.history || historyRef.current
+          setMessages(prev => prev.map(m => {
+            if (m.id !== messageId) return m
+            return {
               ...m,
-              responseType: evt.data?.type || m.responseType,
-              message: evt.data?.message || m.message,
-              cards: evt.data?.cards || m.cards || [],
+              type: 'result',
+              responseType: data?.type || m.responseType || 'clarification',
+              // Prefer accumulated typewriter text; fallback to done.message
+              message: m.message || data?.message || '',
+              // Prefer cards already set by recommendations event
+              cards: m.cards?.length ? m.cards : (data?.cards || []),
             }
-          : m
-      ))
-      return
-    }
-
-    if (evt.event === 'error') {
-      setMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { id: messageId, type: 'error', text: evt.data?.detail || '导购服务异常。' }
-          : m
-      ))
+          }))
+        } else if (evName === 'error') {
+          setMessages(prev => prev.map(m =>
+            m.id === messageId
+              ? { id: messageId, type: 'error', text: data?.detail || '导购服务异常。' }
+              : m
+          ))
+        }
+      }
     }
   }
 
@@ -173,7 +191,7 @@ export default function AIAssistant({ onCardClick }) {
           {messages.map(m => {
             if (m.type === 'welcome') return (
               <div className="msg msg-ai" key={m.id}>
-                <div className="ai-msg-avatar">🤖</div>
+                <div className="ai-msg-avatar">🐯</div>
                 <div>
                   <div className="msg-bubble">
                     你好！我是AI导购<strong>小虎</strong>👋<br />
@@ -183,7 +201,7 @@ export default function AIAssistant({ onCardClick }) {
                     📌 对段位有要求吗？
                   </div>
                   <div className="quick-tags">
-                    {['孙尚香全皮', '貂蝉典藏号', '王者段位 3000内', '便宜入门号'].map(t => (
+                    {['安卓QQ，预算1000', '貂蝉典藏号', '王者段位 3000内', '便宜入门号'].map(t => (
                       <span key={t} className="quick-tag" onClick={() => quickSearch(t)}>{t}</span>
                     ))}
                   </div>
@@ -197,10 +215,10 @@ export default function AIAssistant({ onCardClick }) {
 
             if (m.type === 'thinking') return (
               <div className="msg msg-ai" key={m.id}>
-                <div className="ai-msg-avatar">🤖</div>
+                <div className="ai-msg-avatar">🐯</div>
                 <div className="msg-bubble">
                   <div className="msg-think">
-                    <span>正在为你匹配账号</span>
+                    <span>Thinking</span>
                     <span className="dot" /><span className="dot" /><span className="dot" />
                   </div>
                 </div>
@@ -209,9 +227,12 @@ export default function AIAssistant({ onCardClick }) {
 
             if (m.type === 'result') {
               const cards = m.cards || []
+              if (cards.length > 0) {
+                console.log('cards:', cards)
+              }
               return (
                 <div className="msg msg-ai" key={m.id}>
-                  <div className="ai-msg-avatar">🤖</div>
+                  <div className="ai-msg-avatar">🐯</div>
                   <div className="msg-bubble" style={{ maxWidth: '340px' }}>
                     {cards.length > 0 ? (
                       <>
@@ -238,19 +259,17 @@ export default function AIAssistant({ onCardClick }) {
                                   <span className="ai-card-estimate">估价 <span className="est-val">¥{a.estValue.toLocaleString()}</span></span>
                                   <span className={`ai-card-value-tag ${a.estLabel === '高性价比' ? 'val-good' : 'val-fair'}`}>{a.estLabel}</span>
                                 </div>
-                                <div className="ai-card-risk">🛡 风险{a.risk} · {a.riskItems.slice(0, 2).join(' · ')}</div>
+                                <div className="ai-card-risk">🛡 风险{a.risk} · {a.riskItems.slice(0, 2).map(s => s.replace(/NONE/g, '正常').replace(/SUPPORTED/g, '支持').replace(/FULL_SUPPORTED/g, '支持')).join(' · ')}</div>
                               </div>
                             </div>
                           </div>
                         ))}
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          💡 推荐理由：{cards[0].highlightSkins.slice(0, 3).join('、') || '账号资产匹配'}，{cards[0].estLabel}，{cards[0].riskItems[0]}
+                          💡 推荐理由：{cards[0].highlightSkins.slice(0, 3).join('、') || '账号资产匹配'}，{cards[0].estLabel}
                         </div>
                       </>
                     ) : (
-                      <div style={{ color: 'var(--text-secondary)' }}>
-                        {m.message || '正在整理回复...'}
-                      </div>
+                      <div>{m.message}</div>
                     )}
                   </div>
                 </div>
@@ -259,7 +278,7 @@ export default function AIAssistant({ onCardClick }) {
 
             if (m.type === 'error') return (
               <div className="msg msg-ai" key={m.id}>
-                <div className="ai-msg-avatar">🤖</div>
+                <div className="ai-msg-avatar">🐯</div>
                 <div className="msg-bubble" style={{ color: 'var(--red)' }}>{m.text}</div>
               </div>
             )
@@ -272,12 +291,13 @@ export default function AIAssistant({ onCardClick }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="输入你的需求……"
+            placeholder={isStreaming ? '正在回复中…' : '输入你的需求……'}
             value={input}
+            disabled={isStreaming}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && sendMsg()}
           />
-          <button className="btn-send" onClick={() => sendMsg()}>➤</button>
+          <button className="btn-send" disabled={isStreaming} onClick={() => sendMsg()}>➤</button>
         </div>
       </div>
     </>

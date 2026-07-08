@@ -1,5 +1,6 @@
 export default function AccountDetailModal({ account, onClose }) {
   if (!account) return null
+  console.log('account:', account)
 
   return (
     <div className="modal-overlay open" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -14,19 +15,19 @@ export default function AccountDetailModal({ account, onClose }) {
               <h5>🎮 英雄资产</h5>
               <div className="detail-row"><span>英雄数量</span><span className="dv">{account.heroes} / 120 {account.heroesFull ? '✅ 全英雄' : ''}</span></div>
               <div className="detail-row"><span>核心英雄</span><span className="dv">{account.heroList.join('、')}</span></div>
-              <div className="detail-row"><span>位置倾向</span><span className="dv">{account.position}号</span></div>
+              <div className="detail-row"><span>位置倾向</span><span className="dv">{account.position}</span></div>
               <div className="detail-row"><span>主打英雄</span><span className="dv">{account.topHero}</span></div>
             </div>
             <div className="detail-section">
               <h5>🎨 皮肤资产</h5>
               <div className="detail-row"><span>皮肤总数</span><span className="dv">{account.skins}</span></div>
-              <div className="detail-row"><span>传说皮肤</span><span className="dv">{account.skinsLegend} 个</span></div>
-              <div className="detail-row"><span>限定皮肤</span><span className="dv">{account.skinsLimited} 个</span></div>
-              <div className="detail-row"><span>荣耀典藏</span><span className="dv">{account.skinsCollector} 个</span></div>
+              {account.skinsLegend > 0 && <div className="detail-row"><span>传说皮肤</span><span className="dv">{account.skinsLegend} 个</span></div>}
+              {account.skinsLimited > 0 && <div className="detail-row"><span>限定皮肤</span><span className="dv">{account.skinsLimited} 个</span></div>}
+              {account.skinsCollector > 0 && <div className="detail-row"><span>荣耀典藏</span><span className="dv">{account.skinsCollector} 个</span></div>}
               <div className="detail-row"><span>核心皮肤</span><span className="dv">{account.highlightSkins.slice(0, 4).join('、')}</span></div>
             </div>
             <div className="detail-section">
-              <h5>🏆 竞技属性</h5>
+              <h5>🏆 账号属性</h5>
               <div className="detail-row"><span>当前段位</span><span className="dv">{account.rank}</span></div>
               <div className="detail-row"><span>贵族等级</span><span className="dv">V{account.vip}</span></div>
               <div className="detail-row"><span>账号等级</span><span className="dv">Lv.{account.level}</span></div>

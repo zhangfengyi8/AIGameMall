@@ -12,14 +12,38 @@ class _Agent:
         self.kwargs = kwargs
 
 
+_LLM_CHAT_REPLY = "哈哈猜不到呀，不过想找号随时喊我～"
+
+
+class _FakeResult:
+    final_output = _LLM_CHAT_REPLY
+
+    def to_input_list(self):
+        return []
+
+
+class _FakeStreamResult:
+    async def stream_events(self):
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    def to_input_list(self):
+        return []
+
+
 class _Runner:
+    run_calls = 0
+    stream_calls = 0
+
     @staticmethod
     async def run(*args, **kwargs):
-        raise AssertionError("Runner.run should not be called for controlled non-product chat")
+        _Runner.run_calls += 1
+        return _FakeResult()
 
     @staticmethod
     def run_streamed(*args, **kwargs):
-        raise AssertionError("Runner.run_streamed should not be called for controlled non-product chat")
+        _Runner.stream_calls += 1
+        return _FakeStreamResult()
 
 
 agents_module.Agent = _Agent
@@ -43,20 +67,26 @@ from app.agent import run_agent, run_agent_stream
 
 
 def test_run_agent_identity_question_returns_controlled_reply_without_recommendations():
+    before = _Runner.run_calls
     result = asyncio.run(run_agent("你是谁", []))
 
     assert result["recommendations"] == []
     assert result["history"] == [{"role": "user", "content": "你是谁"}, {"role": "assistant", "content": result["reply"]}]
     assert result["intake"]["intent"] == "assistant_identity"
     assert "智能导购助手" in result["reply"]
+    # 身份问题走受控固定回复，不调用 LLM
+    assert _Runner.run_calls == before
 
 
-def test_run_agent_standalone_number_does_not_repeat_previous_recommendations():
-    result = asyncio.run(run_agent("12345", []))
+def test_run_agent_unknown_message_gets_natural_llm_chat():
+    before = _Runner.run_calls
+    result = asyncio.run(run_agent("你猜我是谁", []))
 
     assert result["recommendations"] == []
     assert result["intake"]["intent"] == "unknown"
-    assert "导购助手" in result["reply"]
+    # 无法识别的消息交给 LLM 自然回复
+    assert _Runner.run_calls == before + 1
+    assert result["reply"] == _LLM_CHAT_REPLY
 
 
 def test_run_agent_not_buying_respects_user_choice():
@@ -65,11 +95,14 @@ def test_run_agent_not_buying_respects_user_choice():
         {"role": "assistant", "content": "预算大概多少？你用 QQ 还是微信，安卓还是 iOS？"},
     ]
 
+    before = _Runner.run_calls
     result = asyncio.run(run_agent("不买了", history))
 
     assert result["recommendations"] == []
     assert result["intake"]["intent"] == "not_buying"
     assert "没问题" in result["reply"]
+    # 拒买属于受控回复，不调用 LLM
+    assert _Runner.run_calls == before
 
 
 def test_run_agent_stream_controlled_reply_emits_no_recommendations():

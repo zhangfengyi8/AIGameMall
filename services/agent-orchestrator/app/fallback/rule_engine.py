@@ -8,6 +8,45 @@ from app.skills.requirement_intake import intake as rule_intake, search_params_f
 from app.skills.recommendation_brief import build_query
 from app.tools.search import _do_search
 
+MAX_RECOMMENDATION_CARDS = 3
+CANDIDATE_POOL_LIMIT = 60
+NO_MORE_ACCOUNTS_REPLY = "暂时没有其他符合要求的账号了呢~ 可以适当放宽预算、区服或皮肤要求，我再帮你找找。"
+_SHOWN_IDS_MARKER = "[[__shown_account_ids__]]"
+
+
+def _extract_shown_ids(history: list[dict] | None) -> set[str]:
+    shown: set[str] = set()
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content", "")
+        if isinstance(content, str) and content.startswith(_SHOWN_IDS_MARKER):
+            for token in content[len(_SHOWN_IDS_MARKER):].strip().split(","):
+                token = token.strip()
+                if token:
+                    shown.add(token)
+    return shown
+
+
+def _strip_markers(history: list[dict] | None) -> list[dict]:
+    cleaned = []
+    for item in history or []:
+        if isinstance(item, dict):
+            content = item.get("content", "")
+            if isinstance(content, str) and content.startswith(_SHOWN_IDS_MARKER):
+                continue
+        cleaned.append(item)
+    return cleaned
+
+
+def _with_shown_marker(history_list: list[dict], shown_ids: set[str]) -> list[dict]:
+    cleaned = _strip_markers(history_list)
+    if shown_ids:
+        cleaned = cleaned + [
+            {"role": "system", "content": _SHOWN_IDS_MARKER + " " + ",".join(sorted(shown_ids))}
+        ]
+    return cleaned
+
 
 def run_fallback(user_message: str, history: list[dict] | None = None) -> dict:
     """规则降级入口：使用 buyer-requirement-intake + account-recommendation-brief 技能。"""
@@ -15,9 +54,13 @@ def run_fallback(user_message: str, history: list[dict] | None = None) -> dict:
     if not intent_result["should_search"]:
         return _controlled_chat_result(user_message, history, intent_result)
 
+    is_next_batch = bool(intent_result.get("next_batch"))
+    shown_ids = _extract_shown_ids(history)
+    base_history = _strip_markers(history)
+
     # Step 1: 需求理解
     merged_message = _merged_user_message(user_message, history)
-    next_history = [*(history or []), {"role": "user", "content": user_message}]
+    next_history = [*base_history, {"role": "user", "content": user_message}]
     intake_result = rule_intake(merged_message)
 
     if not intake_result["ready_for_recommendation"]:
@@ -28,17 +71,18 @@ def run_fallback(user_message: str, history: list[dict] | None = None) -> dict:
         reply = f"好的，我先了解下你的需求。{clarifying}"
         return {
             "reply": reply,
-            "history": [*next_history, {"role": "assistant", "content": reply}],
+            "recommendations": [],
+            "intake": intake_result,
+            "history": _with_shown_marker([*next_history, {"role": "assistant", "content": reply}], shown_ids),
         }
 
     # Step 2: 构建推荐策略
     brief = build_query(intake_result)
-    filters = brief["query"]["filters"]
-    weights = brief["ranking"]["weights"]
     fallbacks = brief["recommendation_policy"]["fallbacks"]
 
-    # Step 3: 执行搜索
+    # Step 3: 执行搜索（放大候选池）
     search_params = search_params_from_intake(intake_result)
+    search_params.setdefault("limit", CANDIDATE_POOL_LIMIT)
     accounts = _do_search(**search_params)
 
     # Step 4: 如果结果太少，尝试降级
@@ -53,21 +97,42 @@ def run_fallback(user_message: str, history: list[dict] | None = None) -> dict:
         if len(accounts2) > len(accounts):
             accounts = accounts2
 
-    # Step 5: 生成回复
-    reply = generate_fallback_reply(accounts, user_message)
+    # Step 5: “换一批”排除已展示账号；普通推荐重置已展示集合
+    if is_next_batch:
+        candidates = [a for a in accounts if a.get("listingId") not in shown_ids]
+    else:
+        candidates = accounts
+    selected_accounts = candidates[:MAX_RECOMMENDATION_CARDS]
+
+    if is_next_batch and not selected_accounts:
+        return {
+            "reply": NO_MORE_ACCOUNTS_REPLY,
+            "recommendations": [],
+            "intake": intake_result,
+            "history": _with_shown_marker(
+                [*next_history, {"role": "assistant", "content": NO_MORE_ACCOUNTS_REPLY}], shown_ids
+            ),
+        }
+
+    selected_ids = {a.get("listingId") for a in selected_accounts if a.get("listingId")}
+    new_shown = (shown_ids | selected_ids) if is_next_batch else set(selected_ids)
+
+    # Step 6: 生成回复
+    reply = generate_fallback_reply(selected_accounts, user_message)
     return {
         "reply": reply,
-        "recommendations": _format_fallback_recommendations(accounts[:3]),
+        "recommendations": _format_fallback_recommendations(selected_accounts),
         "intake": intake_result,
-        "history": [
-            *next_history,
-            {"role": "assistant", "content": reply},
-        ],
+        "history": _with_shown_marker(
+            [*next_history, {"role": "assistant", "content": reply}], new_shown
+        ),
     }
 
 
 def _controlled_chat_result(user_message: str, history: list[dict] | None, intent_result: dict) -> dict:
     reply = intent_result.get("reply", "")
+    shown_ids = _extract_shown_ids(history)
+    base_history = _strip_markers(history)
     return {
         "reply": reply,
         "recommendations": [],
@@ -76,11 +141,14 @@ def _controlled_chat_result(user_message: str, history: list[dict] | None, inten
             "ready_for_recommendation": False,
             "controlled_chat": True,
         },
-        "history": [
-            *(history or []),
-            {"role": "user", "content": user_message},
-            {"role": "assistant", "content": reply},
-        ],
+        "history": _with_shown_marker(
+            [
+                *base_history,
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": reply},
+            ],
+            shown_ids,
+        ),
     }
 
 
