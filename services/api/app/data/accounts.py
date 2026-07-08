@@ -61,6 +61,21 @@ def get_account_detail(account_id: str) -> AccountDetail | None:
     return None
 
 
+def get_account_recommendations(account_ids: list[str]) -> list[dict[str, Any]]:
+    recommendations = []
+    listings_by_id = {
+        str(listing.get("listingId", "")): listing for listing in load_listing_rows()
+    }
+
+    for account_id in account_ids:
+        listing = listings_by_id.get(account_id)
+        if listing is None:
+            continue
+        recommendations.append(_to_recommendation(listing=listing))
+
+    return recommendations
+
+
 def _to_account_detail(*, listing: dict[str, Any]) -> AccountDetail:
     listing_id = str(listing.get("listingId", ""))
     metrics = _metrics_by_listing_id().get(listing_id, {})
@@ -95,6 +110,29 @@ def _to_account_detail(*, listing: dict[str, Any]) -> AccountDetail:
         ),
         purchase_tips=_purchase_tips(listing, metrics),
     )
+
+
+def _to_recommendation(*, listing: dict[str, Any]) -> dict[str, Any]:
+    listing_id = str(listing.get("listingId", ""))
+    metrics = _metrics_by_listing_id().get(listing_id, {})
+    return {
+        "account_id": listing_id,
+        "accountId": str(listing.get("accountId", "")),
+        "game_code": str(listing.get("gameCode", "")),
+        "server_code": str(listing.get("serverCode", "")),
+        "price": int(listing.get("salePrice", 0) or 0),
+        "vip_level": int(listing.get("vipLevel", 0) or 0),
+        "rank_name": str(listing.get("rankName", "") or ""),
+        "rank_stars": int(listing.get("rankStars", 0) or 0),
+        "anti_addiction": str(listing.get("antiAddictionStatus", "") or ""),
+        "secondary_real_name": str(listing.get("secondaryRealNameStatus", "") or ""),
+        "change_bind": str(listing.get("changeBindStatus", "") or ""),
+        "skin_count": int(metrics.get("skinCount", 0) or 0),
+        "hero_count": int(metrics.get("heroCount", 0) or 0),
+        "value_score": float(metrics.get("valueScore", 0) or 0),
+        "heroes": _hero_names_for_listing(listing_id),
+        "skins": _skin_names_for_listing(listing_id),
+    }
 
 
 def _metrics_by_listing_id() -> dict[str, dict[str, Any]]:

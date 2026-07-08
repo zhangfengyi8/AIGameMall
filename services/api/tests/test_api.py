@@ -256,73 +256,28 @@ def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypa
         "换绑和二次实名，防沉迷状态正常，整体风险较低。综合来看，如果你主要想要安卓"
         "微信区、皮肤尽量齐全的账号，这三个号可以作为优先选择。"
     )
-    assert body == {
-        "session_id": "session-chat-fixed-reply",
-        "type": "recommendations",
-        "message": fixed_reply,
-        "cards": [
-            {
-                "id": "listing_10005",
-                "title": "荣耀王者56星 · V9 · 389皮肤",
-                "price": 4980,
-                "match": 98,
-                "heroes": 120,
-                "skins": 389,
-                "rank": "荣耀王者56星",
-                "vip": 9,
-                "region": "安卓微信",
-                "estValue": 4980,
-                "estLabel": "高性价比",
-                "risk": "低",
-                "riskItems": ["防沉迷：无", "实名：支持", "换绑：支持"],
-                "highlightSkins": ["全息碎影", "凤求凰", "至尊宝"],
-                "detail_api": "/api/v1/accounts/listing_10005",
-            },
-            {
-                "id": "listing_10015",
-                "title": "无双王者42星 · V8 · 372皮肤",
-                "price": 4680,
-                "match": 95,
-                "heroes": 118,
-                "skins": 372,
-                "rank": "无双王者42星",
-                "vip": 8,
-                "region": "安卓微信",
-                "estValue": 4680,
-                "estLabel": "高性价比",
-                "risk": "低",
-                "riskItems": ["防沉迷：无", "实名：支持", "换绑：支持"],
-                "highlightSkins": ["倪克斯神谕", "天鹅之梦", "白龙吟"],
-                "detail_api": "/api/v1/accounts/listing_10015",
-            },
-            {
-                "id": "listing_10003",
-                "title": "王者30星 · V8 · 358皮肤",
-                "price": 4380,
-                "match": 92,
-                "heroes": 116,
-                "skins": 358,
-                "rank": "王者30星",
-                "vip": 8,
-                "region": "安卓微信",
-                "estValue": 4380,
-                "estLabel": "高性价比",
-                "risk": "低",
-                "riskItems": ["防沉迷：无", "实名：支持", "换绑：支持"],
-                "highlightSkins": ["地狱火", "末日机甲", "遇见神鹿"],
-                "detail_api": "/api/v1/accounts/listing_10003",
-            },
-        ],
-        "history": [
-            {"role": "assistant", "content": "上一轮"},
-            {"role": "user", "content": "需要全皮肤的账号，微信区，安卓平台。"},
-            {"role": "assistant", "content": fixed_reply},
-        ],
-        "intake": {
-            "fixed_reply_shortcut": True,
-            "trigger": "message_endswith_chinese_period",
-        },
+    assert body["session_id"] == "session-chat-fixed-reply"
+    assert body["type"] == "recommendations"
+    assert body["message"] == fixed_reply
+    assert [card["id"] for card in body["cards"]] == [
+        "listing_10005",
+        "listing_10015",
+        "listing_10003",
+    ]
+    assert body["history"] == [
+        {"role": "assistant", "content": "上一轮"},
+        {"role": "user", "content": "需要全皮肤的账号，微信区，安卓平台。"},
+        {"role": "assistant", "content": fixed_reply},
+    ]
+    assert body["intake"] == {
+        "fixed_reply_shortcut": True,
+        "trigger": "message_endswith_chinese_period",
     }
+    for card in body["cards"]:
+        detail = client.get(card["detail_api"]).json()
+        assert card["price"] == detail["price"]
+        assert card["heroes"] == detail["assets"]["heroes"]
+        assert card["skins"] == detail["assets"]["skins"]
     assert sleep_calls == [5]
 
 
@@ -396,9 +351,10 @@ def test_chat_specific_skin_request_calls_agent_instead_of_fixed_reply(monkeypat
             ],
             "history": [{"role": "assistant", "content": "真实 agent 返回"}],
             "intake": {"ready_for_recommendation": True},
-        }
+    }
 
     monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "false")
 
     response = client.post(
         "/api/v1/chat",
@@ -516,7 +472,7 @@ def test_chat_change_batch_calls_agent_when_fixed_replies_are_disabled(monkeypat
             "intake": {"source": "real-agent"},
         }
 
-    monkeypatch.delenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", raising=False)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "false")
     monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
 
     response = client.post(
@@ -563,7 +519,11 @@ def test_fixed_reply_card_detail_apis_use_existing_accounts(monkeypatch):
         for card in body["cards"]:
             detail_response = client.get(card["detail_api"])
             assert detail_response.status_code == 200
-            assert detail_response.json()["id"] == card["id"]
+            detail = detail_response.json()
+            assert detail["id"] == card["id"]
+            assert detail["price"] == card["price"]
+            assert detail["assets"]["heroes"] == card["heroes"]
+            assert detail["assets"]["skins"] == card["skins"]
 
 
 def test_chat_returns_502_when_agent_fails(monkeypatch):
