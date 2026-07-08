@@ -336,6 +336,8 @@ def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
 
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
 
     response = client.post(
         "/api/v1/chat",
@@ -367,6 +369,54 @@ def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
     assert sleep_calls == [5]
 
 
+def test_chat_specific_skin_request_calls_agent_instead_of_fixed_reply(monkeypatch):
+    agent_calls = []
+
+    async def fake_run_agent(user_message, history):
+        agent_calls.append((user_message, history))
+        return {
+            "reply": "真实 agent 返回",
+            "recommendations": [
+                {
+                    "account_id": "listing_10001",
+                    "server_code": "ANDROID_QQ",
+                    "price": 4200,
+                    "vip_level": 8,
+                    "rank_name": "王者",
+                    "rank_stars": 13,
+                    "anti_addiction": "NONE",
+                    "secondary_real_name": "SUPPORTED",
+                    "change_bind": "FULL_SUPPORTED",
+                    "skin_count": 286,
+                    "hero_count": 115,
+                    "value_score": 94,
+                    "skins": ["杀手不太冷"],
+                }
+            ],
+            "history": [{"role": "assistant", "content": "真实 agent 返回"}],
+            "intake": {"ready_for_recommendation": True},
+        }
+
+    monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-specific-skin",
+            "message": "我想买带孙尚香典藏皮肤的账号",
+            "history": [],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert agent_calls == [("我想买带孙尚香典藏皮肤的账号", [])]
+    assert body["message"] == "真实 agent 返回"
+    assert body["cards"][0]["id"] == "listing_10001"
+    assert body["cards"][0]["highlightSkins"] == ["杀手不太冷"]
+    assert body["intake"] == {"ready_for_recommendation": True}
+
+
 def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
     async def fail_if_called(_user_message, _history):
         raise AssertionError("agent should not be called for fixed reply shortcut")
@@ -378,6 +428,7 @@ def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
 
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
 
     response = client.post(
         "/api/v1/chat",
@@ -539,6 +590,7 @@ def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(m
 
     monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
 
     response = client.post(
         "/api/v1/chat/stream",

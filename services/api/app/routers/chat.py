@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -234,6 +235,9 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
 
 def _fixed_reply_shortcut(message: str) -> tuple[str, str] | None:
+    if os.getenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "").lower() not in {"1", "true", "yes"}:
+        return None
+
     stripped = message.strip()
     if stripped.endswith("。"):
         return CHINESE_PERIOD_FIXED_REPLY_TRIGGER, CHINESE_PERIOD_FIXED_REPLY_TEXT

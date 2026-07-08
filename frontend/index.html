@@ -1705,119 +1705,104 @@
         });
 
         // ===== AI Chat =====
-        function sendMsg() {
+        const API_BASE_URL = 'http://127.0.0.1:8001';
+        let chatHistory = [];
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"]/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;'
+            }[ch]));
+        }
+
+        async function sendMsg() {
             const input = document.getElementById('aiInput');
             const msg = input.value.trim();
             if (!msg) return;
 
             const body = document.getElementById('aiChatBody');
-
-            // Add user message
-            body.insertAdjacentHTML('beforeend', `<div class="msg msg-user">${msg}</div>`);
+            body.insertAdjacentHTML('beforeend', `<div class="msg msg-user">${escapeHtml(msg)}</div>`);
             input.value = '';
 
-            // Show thinking
             const thinkId = 'think_' + Date.now();
-            body.insertAdjacentHTML('beforeend', `<div class="msg msg-ai" id="${thinkId}"><div class="ai-msg-avatar">&#129302;</div><div class="msg-bubble"><div class="msg-think"><span>正在为你匹配账号</span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div></div>`);
+            body.insertAdjacentHTML('beforeend', `<div class="msg msg-ai" id="${thinkId}"><div class="ai-msg-avatar">&#129302;</div><div class="msg-bubble"><div class="msg-think"><span>正在调用真实 Agent 匹配账号</span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div></div>`);
             body.scrollTop = body.scrollHeight;
 
-            // Simulate AI search & response
-            setTimeout(() => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: 'web-' + Date.now(),
+                        message: msg,
+                        history: chatHistory
+                    })
+                });
+
+                if (!response.ok) throw new Error(`API ${response.status}`);
+
+                const result = await response.json();
+                chatHistory = result.history || chatHistory;
                 const thinkEl = document.getElementById(thinkId);
                 if (!thinkEl) return;
 
-                // Simple intent parsing
-                const q = msg.toLowerCase();
-                let results = [...accounts];
+                const bubble = thinkEl.querySelector('.msg-bubble');
+                bubble.innerHTML = renderAgentMessage(result);
+                thinkEl.removeAttribute('id');
+                body.scrollTop = body.scrollHeight;
+            } catch (error) {
+                const thinkEl = document.getElementById(thinkId);
+                if (!thinkEl) return;
+                const bubble = thinkEl.querySelector('.msg-bubble');
+                bubble.innerHTML = `<div style="color:var(--danger);font-size:13px">真实 Agent 调用失败：${escapeHtml(error.message)}。请确认后端 ${API_BASE_URL} 已启动。</div>`;
+                thinkEl.removeAttribute('id');
+            }
+        }
 
-                // Hero matching
-                const heros = ['孙尚香', '李白', '貂蝉', '鲁班', '后羿', '花木兰', '武则天', '孙悟空', '韩信', '裴擒虎', '马可波罗', '诸葛亮', '小乔', '安琪拉', '妲己', '铠', '宫本武藏', '关羽', '马超', '铠'];
-                const matchedHero = heros.find(h => msg.includes(h));
-                if (matchedHero) {
-                    results = results.filter(a => a.heroList.some(h => h.includes(matchedHero)) || a.title.includes(matchedHero));
-                    results.sort((a, b) => {
-                        const aHas = a.heroList.some(h => h.includes(matchedHero)) ? 1 : 0;
-                        const bHas = b.heroList.some(h => h.includes(matchedHero)) ? 1 : 0;
-                        return bHas - aHas || b.match - a.match;
-                    });
-                }
+        function renderAgentMessage(result) {
+            const message = escapeHtml(result.message || '').replace(/\n/g, '<br>');
+            const cards = result.cards || [];
+            if (!cards.length) return `<div>${message}</div>`;
 
-                // Price filtering
-                if (msg.includes('便宜') || msg.includes('入门')) results = results.filter(a => a.price <= 1000);
-                else if (msg.includes('3000') || msg.includes('3千')) results = results.filter(a => a.price >= 2000 && a.price <= 4000);
-                else if (msg.includes('5000') || msg.includes('5千')) results = results.filter(a => a.price >= 4000 && a.price <= 6000);
+            const cardHTML = cards.map((card, index) => renderAgentCard(card, index)).join('');
+            return `<div style="margin-bottom:8px">${message}</div>${cardHTML}`;
+        }
 
-                // Rank filtering
-                if (msg.includes('王者')) results = results.filter(a => a.rankNum >= 16);
-                if (msg.includes('星耀')) results = results.filter(a => a.rankNum >= 10 && a.rankNum < 16);
+        function renderAgentCard(card, index) {
+            const id = escapeHtml(card.id);
+            const title = escapeHtml(card.title);
+            const matchClass = card.match >= 90 ? 'match-high' : 'match-mid';
+            const valueClass = card.estLabel === '高性价比' || card.estLabel === '超值划算' ? 'val-good' : 'val-fair';
+            const price = Number(card.price || 0).toLocaleString();
+            const estValue = Number(card.estValue || card.price || 0).toLocaleString();
+            const riskItems = (card.riskItems || []).slice(0, 2).map(escapeHtml).join(' · ');
 
-                // Position preference
-                if (msg.includes('射手')) results = results.filter(a => a.position === '射手');
-                if (msg.includes('法师')) results = results.filter(a => a.position === '法师');
-                if (msg.includes('打野')) results = results.filter(a => a.position === '打野');
-
-                if (msg.includes('全皮') || msg.includes('全皮肤')) results = results.filter(a => a.heroList.some(h => a.highlightSkins.length >= 3));
-                if (msg.includes('典藏')) results = results.filter(a => a.skinsCollector > 0);
-                if (msg.includes('限定')) results = results.filter(a => a.skinsLimited > 10);
-                if (msg.includes('技术') || msg.includes('战力') || msg.includes('国服')) results = results.filter(a => a.style === '技术号');
-                if (msg.includes('氪佬') || msg.includes('v10') || msg.includes('V10')) results = results.filter(a => a.style === '氪佬号' || a.vip >= 8);
-
-                const top3 = results.slice(0, 3);
-
-                // Build AI response
-                let cardHTML = '';
-                if (top3.length > 0) {
-                    let intro = '';
-                    if (matchedHero) intro = `我找到了<strong>${top3.length}</strong>个包含<strong>${matchedHero}</strong>的优质账号：`;
-                    else intro = `根据你的需求，为你推荐<strong>${top3.length}</strong>个匹配账号：`;
-
-                    cardHTML = `<div style="margin-top:6px">${intro}</div>`;
-                    top3.forEach((a, i) => {
-                        const reasons = [];
-                        if (matchedHero && a.heroList.some(h => h.includes(matchedHero))) reasons.push(`包含英雄${matchedHero}`);
-                        if (a.skinsCollector > 0) reasons.push(`典藏皮×${a.skinsCollector}`);
-                        if (a.skinsLimited > 10) reasons.push(`限定皮×${a.skinsLimited}`);
-                        if (a.rankNum >= 16) reasons.push(`${a.rank}`);
-                        if (a.estLabel === '超值划算') reasons.push('低于估算价，超值');
-                        if (reasons.length === 0) reasons.push(a.highlightSkins[0]);
-
-                        cardHTML += `
-        <div class="ai-card" onclick="openDetail(${a.id})">
+            return `
+        <div class="ai-card" onclick="openDetail('${id}')">
           <div class="ai-card-top">
-            <span class="ai-card-title">${'&#128293; '.repeat(i === 0 ? 1 : 0)}${a.title}</span>
-            <span class="ai-card-match ${a.match >= 90 ? 'match-high' : 'match-mid'}">匹配 ${a.match}%</span>
+            <span class="ai-card-title">${index === 0 ? '&#128293; ' : ''}${title}</span>
+            <span class="ai-card-match ${matchClass}">匹配 ${card.match || 0}%</span>
           </div>
           <div class="ai-card-attrs">
-            <span>&#128302; ${a.heroes}英雄</span>
-            <span>&#127912; ${a.skins}皮肤</span>
-            <span>&#127942; ${a.rank}</span>
-            <span>&#128081; V${a.vip}</span>
-            <span>&#128205; ${a.region}</span>
+            <span>&#128302; ${card.heroes || 0}英雄</span>
+            <span>&#127912; ${card.skins || 0}皮肤</span>
+            <span>&#127942; ${escapeHtml(card.rank || '')}</span>
+            <span>&#128081; V${card.vip || 0}</span>
+            <span>&#128205; ${escapeHtml(card.region || '')}</span>
           </div>
           <div class="ai-card-footer">
             <div>
               <div class="ai-card-price-row">
-                <span class="ai-card-price">&yen;${a.price.toLocaleString()}</span>
-                <span class="ai-card-estimate">估价 <span class="est-val">&yen;${a.estValue.toLocaleString()}</span></span>
-                <span class="ai-card-value-tag ${a.estTag === 'good' ? 'val-good' : 'val-fair'}">${a.estLabel}</span>
+                <span class="ai-card-price">&yen;${price}</span>
+                <span class="ai-card-estimate">估价 <span class="est-val">&yen;${estValue}</span></span>
+                <span class="ai-card-value-tag ${valueClass}">${escapeHtml(card.estLabel || '')}</span>
               </div>
-              <div class="ai-card-risk">&#128737; 风险${a.risk} · ${a.riskItems.slice(0, 2).join(' · ')}</div>
+              <div class="ai-card-risk">&#128737; 风险${escapeHtml(card.risk || '')}${riskItems ? ' · ' + riskItems : ''}</div>
             </div>
           </div>
         </div>`;
-                    });
-
-                    cardHTML += `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">&#128161; 推荐理由：${top3[0].highlightSkins.slice(0, 3).join('、')}等核心皮肤，${top3[0].estLabel}，${top3[0].riskItems[0]}</div>`;
-                } else {
-                    cardHTML = '<div style="margin-top:6px;color:var(--text-secondary)">抱歉，没有找到完全匹配的账号 &#128532;<br>试试调整条件：去掉段位限制、放宽价格区间？</div>';
-                }
-
-                // Replace thinking with actual response
-                const bubble = thinkEl.querySelector('.msg-bubble');
-                bubble.innerHTML = cardHTML;
-                thinkEl.removeAttribute('id');
-                body.scrollTop = body.scrollHeight;
-            }, 1500);
         }
 
         function quickSearch(el) {
@@ -1826,9 +1811,54 @@
         }
 
         // ===== Account Detail Modal =====
-        function openDetail(id) {
+        async function openApiDetail(id) {
+            try {
+                const response = await fetch(API_BASE_URL + '/api/v1/accounts/' + encodeURIComponent(id));
+                if (!response.ok) throw new Error('API ' + response.status);
+                const detail = await response.json();
+                const rareSkins = (detail.assets?.rare_skins || []).map(escapeHtml).join('、') || '暂无';
+                const tags = (detail.tags || []).map(escapeHtml).join('、') || '暂无';
+                const riskNotes = (detail.risk?.notes || []).map((item, i) => `<div style="padding:4px 0">${i + 1}. ${escapeHtml(item)}</div>`).join('') || '暂无风险提示';
+                const tips = (detail.purchase_tips || []).map(escapeHtml).filter(Boolean).join('；') || '暂无';
+                document.getElementById('modalTitle').textContent = detail.title || id;
+                document.getElementById('modalBody').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-section">
+        <h5>&#128302; 英雄资产</h5>
+        <div class="detail-row"><span>英雄数量</span><span class="dv">${detail.assets?.heroes || 0}</span></div>
+        <div class="detail-row"><span>账号平台</span><span class="dv">${escapeHtml(detail.platform || '')} · ${escapeHtml(detail.server || '')}</span></div>
+        <div class="detail-row"><span>当前段位</span><span class="dv">${escapeHtml(detail.rank || '')}</span></div>
+      </div>
+      <div class="detail-section">
+        <h5>&#127912; 皮肤资产</h5>
+        <div class="detail-row"><span>皮肤数量</span><span class="dv">${detail.assets?.skins || 0}</span></div>
+        <div class="detail-row"><span>核心皮肤</span><span class="dv">${rareSkins}</span></div>
+        <div class="detail-row"><span>标签</span><span class="dv">${tags}</span></div>
+      </div>
+      <div class="detail-section">
+        <h5>&#128176; 价格评估</h5>
+        <div class="detail-row"><span>卖家报价</span><span class="dv" style="color:var(--orange);font-size:22px;font-weight:700">&yen;${Number(detail.price || 0).toLocaleString()}</span></div>
+        <div class="detail-row"><span>购买提示</span><span class="dv">${tips}</span></div>
+      </div>
+      <div class="detail-section detail-full">
+        <h5>&#128737; 风险评估</h5>
+        <div class="risk-bar ${detail.risk?.level === '低' ? 'risk-low' : detail.risk?.level === '中' ? 'risk-mid' : 'risk-high'}">
+          <span>风险等级：<strong>${escapeHtml(detail.risk?.level || '未知')}</strong></span>
+        </div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">${riskNotes}</div>
+      </div>
+    </div>`;
+                document.getElementById('modalOverlay').classList.add('active');
+            } catch (error) {
+                alert('账号详情加载失败：' + error.message);
+            }
+        }
+        async function openDetail(id) {
             const a = accounts.find(acc => acc.id === id);
-            if (!a) return;
+            if (!a) {
+                await openApiDetail(id);
+                return;
+            }
 
             document.getElementById('modalTitle').textContent = a.title;
             document.getElementById('modalBody').innerHTML = `

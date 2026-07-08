@@ -65,7 +65,7 @@ result = await run_agent(
 字段说明：
 
 - `reply`: LLM 或规则生成的导购回复。
-- `recommendations`: 前端可直接渲染的账号卡片数组；需求模糊时为空数组；最多 3 个。
+- `recommendations`: 前端可直接渲染的账号卡片数组；需求模糊或无匹配时为空数组；命中多少返回多少，最多 3 个。
 - `history`: 下一轮继续传回 `run_agent()` 或 `run_agent_stream()` 的上下文。
 - `intake`: 规则引擎解析出的需求结构，主要用于调试、日志和透明度展示。
 
@@ -86,7 +86,7 @@ async for event in run_agent_stream(
 
 1. `strategy`: 推荐策略和候选账号概览，仅在需求明确并开始搜索后输出。
 2. `message_delta`: LLM 文本增量，可直接推给前端做打字机效果。
-3. `recommendations`: 完整推荐卡片数组，最多 3 个，和 LLM 看到的候选账号同源。
+3. `recommendations`: 完整推荐卡片数组，命中多少返回多少，最多 3 个，和 LLM 看到的候选账号同源。
 4. `done`: 本轮完整结果，包含 `reply`、`recommendations`、`history`、`intake`。
 
 SSE 包装示例：

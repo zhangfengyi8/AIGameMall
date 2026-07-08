@@ -37,7 +37,7 @@
     ▼
 ③ 规则搜索（app/tools/search.py）
     ├─ 从 JSON 关联表中筛选候选账号
-    └─ 按价值评分排序，最多返回 10 个
+    └─ 按价值评分排序形成候选池，命中多少返回多少，最终最多返回 3 个推荐卡片
     │
     ▼
 ④ 候选数据注入 LLM
@@ -98,7 +98,7 @@ def intake(text: str) -> dict:
 职责：将澄清后的需求转为搜索策略和排序指引。
 
 ````python
-def build_query(intake_result: dict, candidate_count: int = 10) -> dict:
+def build_query(intake_result: dict, candidate_count: int = 3) -> dict:
     """
     返回值：
     {
@@ -117,7 +117,7 @@ def build_query(intake_result: dict, candidate_count: int = 10) -> dict:
             "tie_breakers": [...]
         },
         "recommendation_policy": {
-            "max_items": 10,
+            "max_items": 3,
             "explain_fields": [...],
             "risk_checks": [...],
             "fallbacks": ["drop_soft_preferences", "expand_budget_20pct", ...],
@@ -163,7 +163,7 @@ def search_accounts(
     anti_addiction: str | None = None,
     secondary_real_name: str | None = None,
     change_bind: str | None = None,
-    limit: int = 10,
+    limit: int = 10,  # 候选池上限，最终推荐命中多少返回多少，最多 3 个
 ) -> list[dict]:
 ```
 
@@ -267,7 +267,39 @@ services/agent-orchestrator/
 - [x] 需求模糊时 LLM 追问
 - [x] 引导用户提供预算和平台
 - [x] 规则降级兜底
-- [ ] 流式输出
+- [x] 流式输出（模块调用入口，API 侧自行包装 SSE）
 - [ ] 语音输入
 - [ ] 持久化存储
 - [ ] 多 Agent handoff
+
+## API 侧模块调用契约
+
+API 服务只需要调用 Agent 模块，不需要复制 Agent 内部流程。
+
+### 非流式
+
+```python
+from app.agent import run_agent
+
+result = await run_agent(user_message, history)
+```
+
+返回：`reply`、`recommendations`、`history`、`intake`。
+
+### 流式
+
+```python
+from app.agent import run_agent_stream
+
+async for event in run_agent_stream(user_message, history):
+    ...
+```
+
+事件：
+
+- `strategy`: 推荐策略和候选账号概览。
+- `message_delta`: 文本增量，适合 SSE/WebSocket 推送。
+- `recommendations`: 完整推荐卡片数组。
+- `done`: 本轮完整结果，包含下一轮要保存的 `history`。
+
+API 侧按 `session_id` 维护 history；收到 `done.data.history` 后覆盖当前 session 的历史。

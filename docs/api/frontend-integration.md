@@ -143,7 +143,7 @@ function serverCodeLabel(code) {
 用户: "安卓QQ，500以内，皮肤多点"
   ↓ 后端返回
 reply: "推荐以下3个账号..."
-recommendations: [3张卡片]
+recommendations: [1-1-3张卡片]
 history: [...]
   ↓ 前端渲染
 AI 消息气泡: reply 文本
@@ -170,7 +170,7 @@ AI 消息气泡: reply 文本
   ↓ 后端收到 history + 新消息
   ↓ 后端返回
 reply: "推荐以下3个账号..."
-recommendations: [3张卡片]
+recommendations: [1-1-3张卡片]
   ↓ 前端渲染
 AI 消息气泡 + 卡片
 ```
