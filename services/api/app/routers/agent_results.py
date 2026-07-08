@@ -47,7 +47,7 @@ def _to_frontend_card(recommendation: AgentRecommendation) -> FrontendAccountCar
     rank = _rank_text(recommendation)
     return FrontendAccountCard(
         id=recommendation.account_id,
-        title=f"{rank} · V{recommendation.vip_level or 0} · {recommendation.skin_count}皮肤",
+        title=f"{rank} · V{recommendation.vip_level or 0}",
         price=recommendation.price,
         match=_match_score(recommendation.value_score),
         heroes=recommendation.hero_count,
