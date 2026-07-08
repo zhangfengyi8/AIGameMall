@@ -137,7 +137,7 @@ def test_agent_result_renderer_returns_frontend_message_and_account_cards():
     assert body["cards"] == [
         {
             "id": "listing_10019",
-            "title": "钻石 · V4 · 5皮肤",
+            "title": "钻石 · V4",
             "price": 399,
             "match": 100,
             "heroes": 5,
