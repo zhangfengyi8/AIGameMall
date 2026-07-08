@@ -30,15 +30,35 @@ def _first_int(patterns: list[str], text: str) -> int | None:
     return None
 
 
+def _resolve_server_code(login_channel: str | None, os_val: str | None) -> str | None:
+    if login_channel == "QQ" and os_val == "安卓":
+        return "ANDROID_QQ"
+    if login_channel == "QQ" and os_val == "iOS":
+        return "IOS_QQ"
+    if login_channel == "WX" and os_val == "安卓":
+        return "ANDROID_WECHAT"
+    if login_channel == "WX" and os_val == "iOS":
+        return "IOS_WECHAT"
+    return None
+
+
 def _find_platform(text: str) -> dict:
     if "\n" in text:
+        merged_channel = None
+        merged_os = None
         for line in (part.strip() for part in text.splitlines()):
             if not line:
                 continue
             line_result = _find_platform(line)
-            if line_result.get("login_channel") or line_result.get("os"):
-                return line_result
-        return {"login_channel": None, "os": None, "server_code": None}
+            if merged_channel is None and line_result.get("login_channel"):
+                merged_channel = line_result["login_channel"]
+            if merged_os is None and line_result.get("os"):
+                merged_os = line_result["os"]
+        return {
+            "login_channel": merged_channel,
+            "os": merged_os,
+            "server_code": _resolve_server_code(merged_channel, merged_os),
+        }
 
     text_lower = text.lower().replace(" ", "")
     if "qq" in text_lower or "q区" in text:
@@ -55,28 +75,33 @@ def _find_platform(text: str) -> dict:
     else:
         os_val = None
 
-    server_code = None
-    if login_channel == "QQ" and os_val == "安卓":
-        server_code = "ANDROID_QQ"
-    elif login_channel == "QQ" and os_val == "iOS":
-        server_code = "IOS_QQ"
-    elif login_channel == "WX" and os_val == "安卓":
-        server_code = "ANDROID_WECHAT"
-    elif login_channel == "WX" and os_val == "iOS":
-        server_code = "IOS_WECHAT"
-
-    return {"login_channel": login_channel, "os": os_val, "server_code": server_code}
+    return {
+        "login_channel": login_channel,
+        "os": os_val,
+        "server_code": _resolve_server_code(login_channel, os_val),
+    }
 
 
 def _find_budget(text: str) -> dict:
     result = {"min": None, "max": None, "currency": "CNY", "flexible": False, "unlimited": False, "raw_text": None}
     if "\n" in text:
+        merged = dict(result)
         for line in (part.strip() for part in text.splitlines()):
             if not line:
                 continue
             line_result = _find_budget(line)
-            if line_result.get("max") is not None or line_result.get("min") is not None or line_result.get("unlimited"):
+            if line_result.get("unlimited"):
                 return line_result
+            if merged["max"] is None and line_result.get("max") is not None:
+                merged["max"] = line_result["max"]
+                merged["flexible"] = line_result.get("flexible", False)
+                merged["raw_text"] = line_result.get("raw_text")
+            if merged["min"] is None and line_result.get("min") is not None:
+                merged["min"] = line_result["min"]
+                if merged["raw_text"] is None:
+                    merged["raw_text"] = line_result.get("raw_text")
+        if merged["max"] is not None or merged["min"] is not None:
+            return merged
         return result
 
     if re.search(r"预算不限|不限预算|价格不限|不限价|不设预算|预算无上限|无预算上限", text):

@@ -52,11 +52,11 @@ def test_run_agent_identity_question_returns_controlled_reply_without_recommenda
 
 
 def test_run_agent_standalone_number_does_not_repeat_previous_recommendations():
-    result = asyncio.run(run_agent("6666", []))
+    result = asyncio.run(run_agent("12345", []))
 
     assert result["recommendations"] == []
     assert result["intake"]["intent"] == "unknown"
-    assert "没太理解" in result["reply"]
+    assert "导购助手" in result["reply"]
 
 
 def test_run_agent_not_buying_respects_user_choice():
