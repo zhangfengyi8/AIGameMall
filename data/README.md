@@ -1,4 +1,47 @@
-# skins.json 字段含义说明
+# data 数据目录说明
+
+当前账号推荐与账号详情使用 `data/tags` 下的关联表数据，不再使用旧的
+`data/accounts/accounts.json` 展示型账号文件。
+
+## 账号关联表
+
+| 文件 | 说明 | 主键/关联键 |
+|---|---|---|
+| `tags/accountListing.json` | 账号商品主表，包含价格、区服、段位、VIP、换绑与实名状态 | `listingId` |
+| `tags/accountMetrics.json` | 账号检索指标，包含皮肤数、英雄数、资产估值、性价比评分 | `listingId` |
+| `tags/accountHero.json` | 账号拥有英雄关系表 | `listingId`, `heroId` |
+| `tags/accountSkin.json` | 账号拥有皮肤关系表 | `listingId`, `skinId` |
+| `tags/heroMaster.json` | 英雄主数据 | `heroId` |
+| `tags/skinMaster.json` | 皮肤主数据 | `skinId` |
+| `tags/games.json` | 游戏枚举 | `gameCode` |
+| `tags/ranks.json` | 段位枚举 | 段位编码/名称 |
+| `tags/assets.json` | 资产标签配置 | 标签编码 |
+
+Agent 搜索路径：
+
+```text
+services/agent-orchestrator/app/tools/search.py
+  -> data/tags/accountListing.json
+  -> data/tags/accountMetrics.json
+  -> data/tags/accountHero.json
+  -> data/tags/accountSkin.json
+  -> data/tags/heroMaster.json
+  -> data/tags/skinMaster.json
+```
+
+API 账号详情路径：
+
+```text
+services/api/app/data/accounts.py
+  -> data/tags/accountListing.json
+  -> data/tags/accountMetrics.json
+  -> data/tags/accountHero.json
+  -> data/tags/accountSkin.json
+  -> data/tags/heroMaster.json
+  -> data/tags/skinMaster.json
+```
+
+## skins.json 字段含义说明
 
 > 数据来源：[ricochet.cn/wzry/skin](https://ricochet.cn/wzry/skin)
 
