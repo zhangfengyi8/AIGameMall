@@ -14,7 +14,7 @@ export default function AccountDetailModal({ account, onClose }) {
             <div className="detail-section">
               <h5>🎮 英雄资产</h5>
               <div className="detail-row"><span>英雄数量</span><span className="dv">{account.heroes} / 120 {account.heroesFull ? '✅ 全英雄' : ''}</span></div>
-              <div className="detail-row"><span>核心英雄</span><span className="dv">{account.heroList.join('、')}</span></div>
+              <div className="detail-row"><span style={{whiteSpace:'nowrap'}}>核心英雄</span><span className="dv">{account.heroList.join('、')}</span></div>
               <div className="detail-row"><span>位置倾向</span><span className="dv">{account.position}</span></div>
               <div className="detail-row"><span>主打英雄</span><span className="dv">{account.topHero}</span></div>
             </div>
