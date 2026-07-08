@@ -225,104 +225,47 @@ def test_chat_calls_agent_and_returns_frontend_cards(monkeypatch):
     assert body["intake"] == {"ready_for_recommendation": True}
 
 
-def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent should not be called for fixed reply shortcut")
+def test_chat_calls_agent_for_previous_fixed_reply_messages(monkeypatch):
+    agent_calls = []
 
-    sleep_calls = []
+    async def fake_run_agent(user_message, history):
+        agent_calls.append((user_message, history))
+        return {
+            "reply": f"agent:{user_message}",
+            "recommendations": [],
+            "history": [{"role": "assistant", "content": f"agent:{user_message}"}],
+            "intake": {"source": "real-agent"},
+        }
 
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
     monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
+    monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
 
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "session_id": "session-chat-fixed-reply",
-            "message": "需要全皮肤的账号，微信区，安卓平台。",
-            "history": [{"role": "assistant", "content": "上一轮"}],
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    fixed_reply = (
-        "可以，我帮你筛到三个符合方向的账号：安卓微信区，高皮肤覆盖账号，适合想要"
-        "“全皮肤体验”的玩家。这三个号皮肤数量都很高，热门英雄常用皮肤覆盖比较完整，"
-        "限定和高品质皮肤也比较丰富，适合收藏和日常排位使用。交易条件方面，账号支持"
-        "换绑和二次实名，防沉迷状态正常，整体风险较低。综合来看，如果你主要想要安卓"
-        "微信区、皮肤尽量齐全的账号，这三个号可以作为优先选择。"
-    )
-    assert body["session_id"] == "session-chat-fixed-reply"
-    assert body["type"] == "recommendations"
-    assert body["message"] == fixed_reply
-    assert [card["id"] for card in body["cards"]] == [
-        "listing_10005",
-        "listing_10015",
-        "listing_10003",
+    messages = [
+        "需要全皮肤的账号，微信区，安卓平台。",
+        "我想买一个适合收藏的账号",
+        "帮我找一个有亚瑟的账号",
+        "换一批",
     ]
-    assert body["history"] == [
-        {"role": "assistant", "content": "上一轮"},
-        {"role": "user", "content": "需要全皮肤的账号，微信区，安卓平台。"},
-        {"role": "assistant", "content": fixed_reply},
+
+    for message in messages:
+        response = client.post(
+            "/api/v1/chat",
+            json={
+                "session_id": f"session-chat-{message[:1]}",
+                "message": message,
+                "history": [{"role": "assistant", "content": "上一轮"}],
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["message"] == f"agent:{message}"
+        assert body["cards"] == []
+        assert body["intake"] == {"source": "real-agent"}
+
+    assert agent_calls == [
+        (message, [{"role": "assistant", "content": "上一轮"}]) for message in messages
     ]
-    assert body["intake"] == {
-        "fixed_reply_shortcut": True,
-        "trigger": "message_endswith_chinese_period",
-    }
-    for card in body["cards"]:
-        detail = client.get(card["detail_api"]).json()
-        assert card["price"] == detail["price"]
-        assert card["heroes"] == detail["assets"]["heroes"]
-        assert card["skins"] == detail["assets"]["skins"]
-    assert sleep_calls == [5]
-
-
-def test_chat_returns_fixed_reply_when_message_starts_with_wo(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent should not be called for fixed reply shortcut")
-
-    sleep_calls = []
-
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "session_id": "session-chat-fixed-reply-starts-with-wo",
-            "message": "我想买一个适合收藏的账号",
-            "history": [],
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
-    assert "适合根据你的预算、平台和偏好继续筛选" in body["message"]
-    assert body["type"] == "recommendations"
-    assert [card["id"] for card in body["cards"]] == [
-        "listing_10019",
-        "listing_10014",
-        "listing_10013",
-    ]
-    assert body["history"][-2:] == [
-        {"role": "user", "content": "我想买一个适合收藏的账号"},
-        {"role": "assistant", "content": body["message"]},
-    ]
-    assert body["intake"] == {
-        "fixed_reply_shortcut": True,
-        "trigger": "message_startswith_wo",
-    }
-    assert sleep_calls == [5]
 
 
 def test_chat_specific_skin_request_calls_agent_instead_of_fixed_reply(monkeypatch):
@@ -351,7 +294,7 @@ def test_chat_specific_skin_request_calls_agent_instead_of_fixed_reply(monkeypat
             ],
             "history": [{"role": "assistant", "content": "真实 agent 返回"}],
             "intake": {"ready_for_recommendation": True},
-    }
+        }
 
     monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
     monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "false")
@@ -374,93 +317,7 @@ def test_chat_specific_skin_request_calls_agent_instead_of_fixed_reply(monkeypat
     assert body["intake"] == {"ready_for_recommendation": True}
 
 
-def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent should not be called for fixed reply shortcut")
-
-    sleep_calls = []
-
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "session_id": "session-chat-fixed-reply-contains-yase",
-            "message": "帮我找一个有亚瑟的账号",
-            "history": [],
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["message"].startswith("可以，我帮你筛到三个符合方向的账号")
-    assert "亚瑟" in body["message"]
-    assert body["type"] == "recommendations"
-    assert [card["id"] for card in body["cards"]] == [
-        "listing_10005",
-        "listing_10012",
-        "listing_10019",
-    ]
-    assert body["history"][-2:] == [
-        {"role": "user", "content": "帮我找一个有亚瑟的账号"},
-        {"role": "assistant", "content": body["message"]},
-    ]
-    assert body["intake"] == {
-        "fixed_reply_shortcut": True,
-        "trigger": "message_contains_yase",
-    }
-    assert sleep_calls == [5]
-
-
-def test_chat_returns_fixed_reply_when_message_is_change_batch(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent should not be called for fixed reply shortcut")
-
-    sleep_calls = []
-
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "session_id": "session-chat-fixed-reply-change-batch",
-            "message": "换一批",
-            "history": [{"role": "assistant", "content": "上一批推荐"}],
-        },
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["type"] == "recommendations"
-    assert body["message"].startswith("好的，我重新给你换一批账号")
-    assert "这几个号和上一批侧重点不一样" in body["message"]
-    assert [card["id"] for card in body["cards"]] == [
-        "listing_10002",
-        "listing_10008",
-        "listing_10011",
-    ]
-    assert body["history"][-2:] == [
-        {"role": "user", "content": "换一批"},
-        {"role": "assistant", "content": body["message"]},
-    ]
-    assert body["intake"] == {
-        "fixed_reply_shortcut": True,
-        "trigger": "message_change_batch",
-    }
-    assert sleep_calls == [5]
-
-
-def test_chat_change_batch_calls_agent_when_fixed_replies_are_disabled(monkeypatch):
+def test_chat_change_batch_calls_agent(monkeypatch):
     agent_calls = []
 
     async def fake_run_agent(user_message, history):
@@ -490,40 +347,6 @@ def test_chat_change_batch_calls_agent_when_fixed_replies_are_disabled(monkeypat
     assert body["message"] == "真实 agent 换一批返回"
     assert body["cards"] == []
     assert body["intake"] == {"source": "real-agent"}
-
-
-def test_fixed_reply_card_detail_apis_use_existing_accounts(monkeypatch):
-    async def fake_sleep(_seconds):
-        return None
-
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-
-    for message in [
-        "需要全皮肤的账号，微信区，安卓平台。",
-        "我想买一个适合收藏的账号",
-        "帮我找一个有亚瑟的账号",
-        "换一批",
-    ]:
-        response = client.post(
-            "/api/v1/chat",
-            json={
-                "session_id": f"session-detail-check-{message[:1]}",
-                "message": message,
-                "history": [],
-            },
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert len(body["cards"]) == 3
-        for card in body["cards"]:
-            detail_response = client.get(card["detail_api"])
-            assert detail_response.status_code == 200
-            detail = detail_response.json()
-            assert detail["id"] == card["id"]
-            assert detail["price"] == card["price"]
-            assert detail["assets"]["heroes"] == card["heroes"]
-            assert detail["assets"]["skins"] == card["skins"]
 
 
 def test_chat_returns_502_when_agent_fails(monkeypatch):
@@ -616,77 +439,51 @@ def test_chat_stream_returns_sse_events(monkeypatch):
     assert 'event: done\ndata: {"session_id":"session-stream-001","type":"recommendations"' in body
 
 
-def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent stream should not be called for fixed reply shortcut")
-        yield
+def test_chat_stream_calls_agent_for_previous_fixed_reply_messages(monkeypatch):
+    stream_calls = []
 
-    sleep_calls = []
+    async def fake_run_agent_stream(user_message, history):
+        stream_calls.append((user_message, history))
+        yield {"event": "message_delta", "data": {"text": f"agent:{user_message}"}}
+        yield {
+            "event": "done",
+            "data": {
+                "reply": f"agent:{user_message}",
+                "recommendations": [],
+                "history": [{"role": "assistant", "content": f"agent:{user_message}"}],
+                "intake": {"source": "real-agent-stream"},
+            },
+        }
 
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
     monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
+    monkeypatch.setattr("app.routers.chat.run_agent_stream", fake_run_agent_stream)
 
-    response = client.post(
-        "/api/v1/chat/stream",
-        json={
-            "session_id": "session-stream-fixed-reply",
-            "message": "需要全皮肤的账号，微信区，安卓平台。",
-            "history": [],
-        },
-    )
+    messages = [
+        "需要全皮肤的账号，微信区，安卓平台。",
+        "我想买一个适合收藏的账号",
+        "帮我找一个有亚瑟的账号",
+        "换一批",
+    ]
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    body = response.text
-    assert "event: message_delta" in body
-    assert "可以，我帮你筛到三个符合方向的账号" in body
-    assert "event: recommendations" in body
-    assert '"id":"listing_10005"' in body
-    assert "event: done" in body
-    assert '"session_id":"session-stream-fixed-reply"' in body
-    assert '"fixed_reply_shortcut":true' in body
-    assert sleep_calls == [5]
+    for message in messages:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json={
+                "session_id": f"session-stream-{message[:1]}",
+                "message": message,
+                "history": [{"role": "assistant", "content": "上一轮"}],
+            },
+        )
 
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        body = response.text
+        assert f"agent:{message}" in body
+        assert "fixed_reply_shortcut" not in body
 
-def test_chat_stream_returns_fixed_reply_when_message_is_change_batch(monkeypatch):
-    async def fail_if_called(_user_message, _history):
-        raise AssertionError("agent stream should not be called for fixed reply shortcut")
-        yield
-
-    sleep_calls = []
-
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
-    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
-    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
-
-    response = client.post(
-        "/api/v1/chat/stream",
-        json={
-            "session_id": "session-stream-fixed-reply-change-batch",
-            "message": "换一批",
-            "history": [],
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    body = response.text
-    assert "event: message_delta" in body
-    assert "好的，我重新给你换一批账号" in body
-    assert "event: recommendations" in body
-    assert '"id":"listing_10002"' in body
-    assert '"id":"listing_10008"' in body
-    assert '"id":"listing_10011"' in body
-    assert "event: done" in body
-    assert '"trigger":"message_change_batch"' in body
-    assert sleep_calls == [5]
+    assert stream_calls == [
+        (message, [{"role": "assistant", "content": "上一轮"}]) for message in messages
+    ]
 
 
 def test_account_detail_returns_frontend_detail_payload():

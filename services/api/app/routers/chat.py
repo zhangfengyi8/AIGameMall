@@ -1,12 +1,9 @@
-import asyncio
 import json
-import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.data.accounts import get_account_recommendations
 from app.routers.agent_results import render_agent_result
 from app.schemas.agent_results import AgentResultRenderRequest, AgentResultRenderResponse
 from app.schemas.chat import ChatRequest
@@ -15,67 +12,9 @@ from app.services.agent_client import AgentClientError, run_agent, run_agent_str
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-CHINESE_PERIOD_FIXED_REPLY_TRIGGER = "message_endswith_chinese_period"
-CHINESE_PERIOD_FIXED_REPLY_TEXT = (
-    "可以，我帮你筛到三个符合方向的账号：安卓微信区，高皮肤覆盖账号，适合想要"
-    "“全皮肤体验”的玩家。这三个号皮肤数量都很高，热门英雄常用皮肤覆盖比较完整，"
-    "限定和高品质皮肤也比较丰富，适合收藏和日常排位使用。交易条件方面，账号支持"
-    "换绑和二次实名，防沉迷状态正常，整体风险较低。综合来看，如果你主要想要安卓"
-    "微信区、皮肤尽量齐全的账号，这三个号可以作为优先选择。"
-)
-STARTS_WITH_WO_FIXED_REPLY_TRIGGER = "message_startswith_wo"
-STARTS_WITH_WO_FIXED_REPLY_TEXT = (
-    "可以，我帮你筛到三个符合方向的账号：这些账号整体配置比较均衡，适合根据你的"
-    "预算、平台和偏好继续筛选。这三个号在皮肤数量、热门英雄覆盖和交易安全条件上"
-    "都比较适合优先查看，支持换绑和二次实名，防沉迷状态正常，整体风险较低。综合"
-    "来看，如果你想快速找到合适的游戏账号，这三个号可以作为优先选择。"
-)
-CONTAINS_YASE_FIXED_REPLY_TRIGGER = "message_contains_yase"
-CONTAINS_YASE_FIXED_REPLY_TEXT = (
-    "可以，我帮你筛到三个符合方向的账号：这些账号都适合关注亚瑟相关资产和常用英雄"
-    "体验的玩家。三个号的英雄池覆盖比较完整，亚瑟可用性明确，皮肤和基础资产也比较"
-    "适合日常排位使用。交易条件方面，账号支持换绑和二次实名，防沉迷状态正常，整体"
-    "风险较低。综合来看，如果你主要想找包含亚瑟、适合稳定上手的账号，这三个号可以"
-    "作为优先选择。"
-)
-CHANGE_BATCH_FIXED_REPLY_TRIGGER = "message_change_batch"
-CHANGE_BATCH_FIXED_REPLY_TEXT = (
-    "好的，我重新给你换一批账号：这几个号和上一批侧重点不一样，分别覆盖高端收藏、"
-    "低预算入门和限定皮肤体验，适合你继续横向比较。它们都支持换绑和二次实名，防沉迷"
-    "状态正常，交易风险相对可控。综合来看，如果你想看看不同价位和资产组合，这一批"
-    "可以作为新的备选。"
-)
-FIXED_REPLY_ACCOUNT_IDS_BY_TRIGGER = {
-    CHINESE_PERIOD_FIXED_REPLY_TRIGGER: [
-        "listing_10005",
-        "listing_10015",
-        "listing_10003",
-    ],
-    STARTS_WITH_WO_FIXED_REPLY_TRIGGER: [
-        "listing_10019",
-        "listing_10014",
-        "listing_10013",
-    ],
-    CONTAINS_YASE_FIXED_REPLY_TRIGGER: [
-        "listing_10005",
-        "listing_10012",
-        "listing_10019",
-    ],
-    CHANGE_BATCH_FIXED_REPLY_TRIGGER: [
-        "listing_10002",
-        "listing_10008",
-        "listing_10011",
-    ],
-}
-
 
 @router.post("", response_model=AgentResultRenderResponse)
 async def chat(request: ChatRequest) -> AgentResultRenderResponse:
-    shortcut = _fixed_reply_shortcut(request.message)
-    if shortcut:
-        await asyncio.sleep(5)
-        return _fixed_reply_response(request, shortcut)
-
     try:
         agent_result = await run_agent(request.message, request.history)
     except (AgentClientError, TimeoutError, RuntimeError) as exc:
@@ -96,16 +35,6 @@ async def chat(request: ChatRequest) -> AgentResultRenderResponse:
 @router.post("/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     async def stream():
-        shortcut = _fixed_reply_shortcut(request.message)
-        if shortcut:
-            _trigger, reply = shortcut
-            await asyncio.sleep(5)
-            data = _fixed_reply_response(request, shortcut).model_dump()
-            yield _sse("message_delta", {"text": reply})
-            yield _sse("recommendations", data["cards"])
-            yield _sse("done", data)
-            return
-
         try:
             async for event in run_agent_stream(request.message, request.history):
                 event_name = event.get("event", "")
@@ -119,46 +48,6 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield _sse("error", {"detail": "Agent service unavailable"})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
-
-
-def _fixed_reply_shortcut(message: str) -> tuple[str, str] | None:
-    if os.getenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true").lower() not in {"1", "true", "yes"}:
-        return None
-
-    stripped = message.strip()
-    if stripped.endswith("。"):
-        return CHINESE_PERIOD_FIXED_REPLY_TRIGGER, CHINESE_PERIOD_FIXED_REPLY_TEXT
-    if stripped.startswith("我"):
-        return STARTS_WITH_WO_FIXED_REPLY_TRIGGER, STARTS_WITH_WO_FIXED_REPLY_TEXT
-    if "亚瑟" in stripped:
-        return CONTAINS_YASE_FIXED_REPLY_TRIGGER, CONTAINS_YASE_FIXED_REPLY_TEXT
-    if stripped == "换一批":
-        return CHANGE_BATCH_FIXED_REPLY_TRIGGER, CHANGE_BATCH_FIXED_REPLY_TEXT
-    return None
-
-
-def _fixed_reply_response(
-    request: ChatRequest,
-    shortcut: tuple[str, str],
-) -> AgentResultRenderResponse:
-    trigger, reply = shortcut
-    recommendations = get_account_recommendations(FIXED_REPLY_ACCOUNT_IDS_BY_TRIGGER[trigger])
-    return render_agent_result(
-        AgentResultRenderRequest(
-            session_id=request.session_id,
-            reply=reply,
-            recommendations=recommendations,
-            history=[
-                *request.history,
-                {"role": "user", "content": request.message},
-                {"role": "assistant", "content": reply},
-            ],
-            intake={
-                "fixed_reply_shortcut": True,
-                "trigger": trigger,
-            },
-        )
-    )
 
 
 def _render_recommendation_cards(recommendations: list[dict[str, Any]]) -> list[dict[str, Any]]:
