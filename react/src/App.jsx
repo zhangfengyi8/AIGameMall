@@ -226,7 +226,7 @@ export default function App() {
                   <div className="card-footer">
                     <div>
                       <span className="card-price"><span className="unit">¥</span>{a.price.toLocaleString()}</span>
-                      <span className="card-price original">¥{a.estValue.toLocaleString()}</span>
+                      {/* <span className="card-price original">¥{a.estValue.toLocaleString()}</span> */}
                     </div>
                     <div className="card-actions">
                       <button className="btn-card btn-compare" onClick={e => e.stopPropagation()}>对比</button>
