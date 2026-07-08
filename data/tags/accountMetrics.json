@@ -14,8 +14,8 @@
   },
   {
     "listingId": "listing_10002",
-    "skinCount": 351,
-    "heroCount": 79,
+    "skinCount": 651,
+    "heroCount": 113,
     "skinTotalValueFen": 0,
     "heroSkinCounts": {
       "hero_武则天": 1,
@@ -28,8 +28,8 @@
   },
   {
     "listingId": "listing_10003",
-    "skinCount": 67,
-    "heroCount": 31,
+    "skinCount": 781,
+    "heroCount": 120,
     "skinTotalValueFen": 42640,
     "heroSkinCounts": {
       "hero_貂蝉": 1,
@@ -56,10 +56,11 @@
   },
   {
     "listingId": "listing_10005",
-    "skinCount": 279,
-    "heroCount": 94,
+    "skinCount": 781,
+    "heroCount": 120,
     "skinTotalValueFen": 34640,
     "heroSkinCounts": {
+	  "hero_亚瑟": 1,
       "hero_孙悟空": 2,
       "hero_莱西奥": 1,
       "hero_花木兰": 1,
@@ -132,8 +133,8 @@
   },
   {
     "listingId": "listing_10011",
-    "skinCount": 295,
-    "heroCount": 109,
+    "skinCount": 106,
+    "heroCount": 50,
     "skinTotalValueFen": 16880,
     "heroSkinCounts": {
       "hero_貂蝉": 1,
@@ -150,6 +151,7 @@
     "heroCount": 75,
     "skinTotalValueFen": 20400,
     "heroSkinCounts": {
+	  "hero_亚瑟": 1,
       "hero_后羿": 1,
       "hero_孙悟空": 1,
       "hero_大乔": 1,
@@ -186,8 +188,8 @@
   },
   {
     "listingId": "listing_10015",
-    "skinCount": 134,
-    "heroCount": 66,
+    "skinCount": 781,
+    "heroCount": 120,
     "skinTotalValueFen": 43520,
     "heroSkinCounts": {
       "hero_瑶": 1,
@@ -241,15 +243,15 @@
   },
   {
     "listingId": "listing_10019",
-    "skinCount": 225,
-    "heroCount": 45,
+    "skinCount": 325,
+    "heroCount": 105,
     "skinTotalValueFen": 40520,
     "heroSkinCounts": {
       "hero_孙悟空": 1,
       "hero_韩信": 1,
       "hero_后羿": 1,
       "hero_妲己": 1,
-      "hero_亚瑟": 1
+      "hero_亚瑟": 3
     },
     "valueScore": 101.55
   },

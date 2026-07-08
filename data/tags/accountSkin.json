@@ -81,6 +81,10 @@
   },
   {
     "listingId": "listing_10005",
+    "skinId": "skin_亚瑟_狮心王"
+  },
+  {
+    "listingId": "listing_10005",
     "skinId": "skin_孙悟空_地狱火"
   },
   {
@@ -206,6 +210,10 @@
   {
     "listingId": "listing_10011",
     "skinId": "skin_芈月_大秦宣太后"
+  },
+  {
+    "listingId": "listing_10012",
+    "skinId": "skin_亚瑟_狮心王"
   },
   {
     "listingId": "listing_10012",
@@ -366,6 +374,14 @@
   {
     "listingId": "listing_10019",
     "skinId": "skin_亚瑟_狮心王"
+  },
+    {
+    "listingId": "listing_10019",
+    "skinId": "skin_亚瑟_死亡骑士"
+  },
+    {
+    "listingId": "listing_10019",
+    "skinId": "skin_亚瑟_鸿运当头"
   },
   {
     "listingId": "listing_10020",
