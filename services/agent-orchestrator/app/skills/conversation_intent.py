@@ -146,6 +146,43 @@ COMPLETED_RECOMMENDATION_PATTERNS = (
     "交易安全上",
 )
 
+NEXT_BATCH_PATTERNS = (
+    "换一批",
+    "换一个",
+    "换个",
+    "换其他",
+    "换别的",
+    "换换",
+    "换一换",
+    "再换",
+    "还有别的",
+    "还有其他",
+    "还有没有",
+    "还有吗",
+    "还有更多",
+    "有没有其他",
+    "有没有别的",
+    "有没有更多",
+    "没有其他",
+    "没有别的",
+    "其他的呢",
+    "别的呢",
+    "别的号",
+    "其他号",
+    "看看别的",
+    "看看其他",
+    "再来几个",
+    "再来一批",
+    "再看看别",
+    "更多推荐",
+    "不满意",
+    "不喜欢这",
+    "这几个不行",
+    "这些不行",
+    "都不行",
+    "都不喜欢",
+)
+
 IDENTITY_REPLY = "我是你的游戏账号智能导购助手，可以按预算、区服、英雄皮肤、段位和风险偏好帮你筛选账号。"
 NOT_BUYING_REPLY = "没问题，先不看账号也可以。你想了解账号交易注意事项、王者皮肤配置，或者随便聊聊都行。"
 UNSAFE_REPLY = "这个我不能协助。账号交易建议走平台担保流程，重点确认实名、换绑、防沉迷和售后规则，避免私下交易风险。"
@@ -173,6 +210,9 @@ def classify_conversation_intent(user_message: str, history: list[dict[str, Any]
 
     if _contains_any(normalized, TRADE_ADVICE_PATTERNS):
         return _result("trade_advice", TRADE_ADVICE_REPLY, False)
+
+    if _contains_any(normalized, NEXT_BATCH_PATTERNS) and _has_active_buying_context(history):
+        return {"intent": "next_batch", "reply": "", "should_search": True, "next_batch": True}
 
     if _is_buying_message(normalized):
         if _is_followup_message(normalized) and _has_active_buying_context(history):
