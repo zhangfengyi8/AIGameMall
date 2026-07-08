@@ -37,6 +37,13 @@ CONTAINS_YASE_FIXED_REPLY_TEXT = (
     "风险较低。综合来看，如果你主要想找包含亚瑟、适合稳定上手的账号，这三个号可以"
     "作为优先选择。"
 )
+CHANGE_BATCH_FIXED_REPLY_TRIGGER = "message_change_batch"
+CHANGE_BATCH_FIXED_REPLY_TEXT = (
+    "好的，我重新给你换一批账号：这几个号和上一批侧重点不一样，分别覆盖高端收藏、"
+    "低预算入门和限定皮肤体验，适合你继续横向比较。它们都支持换绑和二次实名，防沉迷"
+    "状态正常，交易风险相对可控。综合来看，如果你想看看不同价位和资产组合，这一批"
+    "可以作为新的备选。"
+)
 FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER = {
     CHINESE_PERIOD_FIXED_REPLY_TRIGGER: [
         {
@@ -179,6 +186,53 @@ FIXED_REPLY_RECOMMENDATIONS_BY_TRIGGER = {
             "skins": ["狮心王", "精灵王", "女仆咖啡"],
         },
     ],
+    CHANGE_BATCH_FIXED_REPLY_TRIGGER: [
+        {
+            "account_id": "listing_10002",
+            "server_code": "IOS_QQ",
+            "price": 28800,
+            "vip_level": 10,
+            "rank_name": "荣耀王者",
+            "rank_stars": 82,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 5,
+            "hero_count": 5,
+            "value_score": 0,
+            "skins": ["倪克斯神谕", "天鹅之梦", "杀手不太冷"],
+        },
+        {
+            "account_id": "listing_10008",
+            "server_code": "ANDROID_QQ",
+            "price": 980,
+            "vip_level": 4,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 3,
+            "hero_count": 5,
+            "value_score": 17.22,
+            "skins": ["末日机甲", "杀手不太冷", "冰锋战神"],
+        },
+        {
+            "account_id": "listing_10011",
+            "server_code": "ANDROID_WECHAT",
+            "price": 7200,
+            "vip_level": 8,
+            "rank_name": "星耀",
+            "rank_stars": 0,
+            "anti_addiction": "NONE",
+            "secondary_real_name": "SUPPORTED",
+            "change_bind": "FULL_SUPPORTED",
+            "skin_count": 5,
+            "hero_count": 5,
+            "value_score": 2.34,
+            "skins": ["仲夏夜之梦", "凤求凰", "至尊宝"],
+        },
+    ],
 }
 
 
@@ -245,6 +299,8 @@ def _fixed_reply_shortcut(message: str) -> tuple[str, str] | None:
         return STARTS_WITH_WO_FIXED_REPLY_TRIGGER, STARTS_WITH_WO_FIXED_REPLY_TEXT
     if "亚瑟" in stripped:
         return CONTAINS_YASE_FIXED_REPLY_TRIGGER, CONTAINS_YASE_FIXED_REPLY_TEXT
+    if stripped == "换一批":
+        return CHANGE_BATCH_FIXED_REPLY_TRIGGER, CHANGE_BATCH_FIXED_REPLY_TEXT
     return None
 
 

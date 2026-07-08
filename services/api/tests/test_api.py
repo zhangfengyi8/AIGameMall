@@ -236,6 +236,7 @@ def test_chat_returns_fixed_reply_when_message_ends_with_chinese_period(monkeypa
 
     monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
 
     response = client.post(
         "/api/v1/chat",
@@ -460,16 +461,93 @@ def test_chat_returns_fixed_reply_when_message_contains_yase(monkeypatch):
     assert sleep_calls == [5]
 
 
+def test_chat_returns_fixed_reply_when_message_is_change_batch(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent should not be called for fixed reply shortcut")
+
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("app.routers.chat.run_agent", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-chat-fixed-reply-change-batch",
+            "message": "换一批",
+            "history": [{"role": "assistant", "content": "上一批推荐"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "recommendations"
+    assert body["message"].startswith("好的，我重新给你换一批账号")
+    assert "这几个号和上一批侧重点不一样" in body["message"]
+    assert [card["id"] for card in body["cards"]] == [
+        "listing_10002",
+        "listing_10008",
+        "listing_10011",
+    ]
+    assert body["history"][-2:] == [
+        {"role": "user", "content": "换一批"},
+        {"role": "assistant", "content": body["message"]},
+    ]
+    assert body["intake"] == {
+        "fixed_reply_shortcut": True,
+        "trigger": "message_change_batch",
+    }
+    assert sleep_calls == [5]
+
+
+def test_chat_change_batch_calls_agent_when_fixed_replies_are_disabled(monkeypatch):
+    agent_calls = []
+
+    async def fake_run_agent(user_message, history):
+        agent_calls.append((user_message, history))
+        return {
+            "reply": "真实 agent 换一批返回",
+            "recommendations": [],
+            "history": [{"role": "assistant", "content": "真实 agent 换一批返回"}],
+            "intake": {"source": "real-agent"},
+        }
+
+    monkeypatch.delenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", raising=False)
+    monkeypatch.setattr("app.routers.chat.run_agent", fake_run_agent)
+
+    response = client.post(
+        "/api/v1/chat",
+        json={
+            "session_id": "session-chat-change-batch-real-agent",
+            "message": "换一批",
+            "history": [{"role": "assistant", "content": "上一批推荐"}],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert agent_calls == [("换一批", [{"role": "assistant", "content": "上一批推荐"}])]
+    assert body["message"] == "真实 agent 换一批返回"
+    assert body["cards"] == []
+    assert body["intake"] == {"source": "real-agent"}
+
+
 def test_fixed_reply_card_detail_apis_use_existing_accounts(monkeypatch):
     async def fake_sleep(_seconds):
         return None
 
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
 
     for message in [
         "需要全皮肤的账号，微信区，安卓平台。",
         "我想买一个适合收藏的账号",
         "帮我找一个有亚瑟的账号",
+        "换一批",
     ]:
         response = client.post(
             "/api/v1/chat",
@@ -614,6 +692,43 @@ def test_chat_stream_returns_fixed_reply_when_message_ends_with_chinese_period(m
     assert sleep_calls == [5]
 
 
+def test_chat_stream_returns_fixed_reply_when_message_is_change_batch(monkeypatch):
+    async def fail_if_called(_user_message, _history):
+        raise AssertionError("agent stream should not be called for fixed reply shortcut")
+        yield
+
+    sleep_calls = []
+
+    async def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("app.routers.chat.run_agent_stream", fail_if_called)
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setenv("AIGAMEMALL_ENABLE_FIXED_REPLIES", "true")
+
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={
+            "session_id": "session-stream-fixed-reply-change-batch",
+            "message": "换一批",
+            "history": [],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert "event: message_delta" in body
+    assert "好的，我重新给你换一批账号" in body
+    assert "event: recommendations" in body
+    assert '"id":"listing_10002"' in body
+    assert '"id":"listing_10008"' in body
+    assert '"id":"listing_10011"' in body
+    assert "event: done" in body
+    assert '"trigger":"message_change_batch"' in body
+    assert sleep_calls == [5]
+
+
 def test_account_detail_returns_frontend_detail_payload():
     response = client.get("/api/v1/accounts/listing_10019")
 
@@ -621,13 +736,16 @@ def test_account_detail_returns_frontend_detail_payload():
     body = response.json()
     assert body["id"] == "listing_10019"
     assert body["account_id"] == "acc_100019"
-    assert body["title"] == "高风险低价·不支持改实名皮肤号"
+    assert body["title"] == "安卓QQ · 钻石 · V4 · 5皮肤账号"
     assert body["price"] == 399
     assert body["platform"] == "QQ"
     assert body["server"] == "安卓QQ"
-    assert body["rank"] == "钻石III"
-    assert body["assets"]["skins"] == 102
-    assert body["risk"]["level"] == "high"
+    assert body["rank"] == "钻石"
+    assert body["assets"]["skins"] == 5
+    assert body["assets"]["heroes"] == 5
+    assert body["assets"]["rare_skins"] == ["地狱火", "白龙吟", "精灵王", "女仆咖啡", "狮心王"]
+    assert body["risk"]["level"] == "low"
+    assert body["risk"]["notes"] == ["无防沉迷", "支持二次实名", "支持换绑"]
     assert body["purchase_tips"]
 
 
